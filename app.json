@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Lokala",
+    "slug": "lokala-prototype",
+    "version": "1.0.0",
+    "scheme": "lokala",
+    "newArchEnabled": true,
+    "icon": "./assets/appicon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "bundleIdentifier": "com.parthapaaaaa.lokala-prototype",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Lokala uses your location to show deals near you.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.parthapaaaaa.lokalaprototype",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-font",
+      "expo-location",
+      "expo-web-browser"
+    ],
+    "assets": [
+      "./assets"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "792d6261-3994-404b-95a8-eac8eddbd52e"
+      }
+    }
+  }
+}

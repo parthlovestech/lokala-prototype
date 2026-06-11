@@ -1,0 +1,315 @@
+export interface Deal {
+  id: string;
+  businessName: string;
+  title: string;
+  subtitle: string;
+  expiresAt: string;
+  isSaved?: boolean;
+  category: 'coffee' | 'food' | 'drinks' | 'retail' | 'health' | 'services' | 'auto';
+  distanceMeters: number;
+  percentOff?: number;
+  discountDetail: string; // The actual discount text shown on the card
+  address: string;
+  phone?: string;
+  website?: string;
+}
+
+export const MOCK_DEALS: Deal[] = [
+  {
+    id: '1',
+    businessName: 'Jewel of India',
+    title: '10% Off Lunch or Dinner',
+    subtitle: 'Show Lokala card at checkout',
+    discountDetail: '10% off lunch or dinner',
+    expiresAt: 'Ongoing',
+    isSaved: true,
+    category: 'food',
+    distanceMeters: 120,
+    percentOff: 10,
+    address: '4 Silver St, Waterville ME',
+  },
+  {
+    id: '2',
+    businessName: 'Aroma Joe\'s',
+    title: '$1 Off Any Drink — Mondays',
+    subtitle: 'Show Lokala card — limit one per day',
+    discountDetail: '$1 off any size drink, Mondays only. Limit one per card per day.',
+    expiresAt: 'Every Monday',
+    category: 'coffee',
+    distanceMeters: 280,
+    address: '280 Kennedy Memorial Dr, Waterville ME',
+  },
+  {
+    id: '3',
+    businessName: 'Silver Street Tavern',
+    title: '10% Off Food Order',
+    subtitle: 'Dine in only — excludes alcohol',
+    discountDetail: '10% off food order. Excludes alcohol. Dine in only.',
+    expiresAt: 'Ongoing',
+    isSaved: true,
+    category: 'drinks',
+    distanceMeters: 95,
+    percentOff: 10,
+    address: '2 Silver St, Waterville ME',
+  },
+  {
+    id: '4',
+    businessName: 'Amici\'s Cucina',
+    title: '10% Off Your Food Bill',
+    subtitle: 'Show Lokala card to your server',
+    discountDetail: '10% off food bill',
+    expiresAt: 'Ongoing',
+    category: 'food',
+    distanceMeters: 340,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '5',
+    businessName: 'Firehouse Subs',
+    title: 'Free Fountain Drink',
+    subtitle: 'With any purchase — just show Lokala',
+    discountDetail: 'Free fountain drink with any purchase',
+    expiresAt: 'Ongoing',
+    category: 'food',
+    distanceMeters: 610,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '6',
+    businessName: 'Governor\'s Restaurant',
+    title: '$5 Off $40 or More',
+    subtitle: 'Excludes alcohol and banquets',
+    discountDetail: '$5.00 off $40.00 or more. One-time use, excludes alcohol and banquets.',
+    expiresAt: 'Ongoing',
+    category: 'food',
+    distanceMeters: 820,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '7',
+    businessName: 'Portland Pie Company',
+    title: '10% Off Dine-In',
+    subtitle: 'Show Lokala card when ordering',
+    discountDetail: '10% off dine-in',
+    expiresAt: 'Ongoing',
+    category: 'food',
+    distanceMeters: 460,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '8',
+    businessName: 'O\'Brien\'s Irish Pub',
+    title: '15% Off Any Meal',
+    subtitle: 'Show Lokala card to your server',
+    discountDetail: '15% off any meal',
+    expiresAt: 'Ongoing',
+    category: 'drinks',
+    distanceMeters: 390,
+    percentOff: 15,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '9',
+    businessName: 'Asian Cafe',
+    title: '10% Off Dine-In & Takeout',
+    subtitle: 'Excludes alcohol',
+    discountDetail: '10% off dine-in and take out only.',
+    expiresAt: 'Ongoing',
+    category: 'food',
+    distanceMeters: 510,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '10',
+    businessName: 'Heritage House',
+    title: '10% Off Dinner Service',
+    subtitle: 'Sun–Thu only, excludes alcohol',
+    discountDetail: '10% off orders at dinner service Sunday–Thursday (excludes alcohol)',
+    expiresAt: 'Sun–Thu',
+    category: 'food',
+    distanceMeters: 740,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '11',
+    businessName: 'Mainely Brews',
+    title: '10% Off Food Orders',
+    subtitle: 'Show Lokala card at the bar',
+    discountDetail: '10% off food orders',
+    expiresAt: 'Ongoing',
+    category: 'drinks',
+    distanceMeters: 290,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '12',
+    businessName: 'Dixon\'s Country Market',
+    title: '10% Off Deli Orders',
+    subtitle: 'Food orders from the deli only',
+    discountDetail: '10% off food orders from deli',
+    expiresAt: 'Ongoing',
+    category: 'food',
+    distanceMeters: 1100,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '13',
+    businessName: 'Apollo Day Spa & Salon',
+    title: '10% Off Any Products',
+    subtitle: 'In-store product purchases',
+    discountDetail: '10% off any purchase of products',
+    expiresAt: 'Ongoing',
+    category: 'health',
+    distanceMeters: 680,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '14',
+    businessName: 'Rose Key Massage',
+    title: '10% Off All Services',
+    subtitle: 'Book with your Lokala card',
+    discountDetail: '10% off all services',
+    expiresAt: 'Ongoing',
+    category: 'health',
+    distanceMeters: 930,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '15',
+    businessName: 'Kennebec Eye Care',
+    title: '15% Off Glasses',
+    subtitle: 'Also 5% off annual contact lens supply',
+    discountDetail: '15% off glasses; 5% off annual supply of contact lenses',
+    expiresAt: 'Ongoing',
+    category: 'health',
+    distanceMeters: 1250,
+    percentOff: 15,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '16',
+    businessName: 'Ace Tire & Auto Service',
+    title: '10% Off Services (up to $75)',
+    subtitle: 'Excludes tires and oil changes',
+    discountDetail: '10% off up to $75.00 MAX (excluding tire and oil change service)',
+    expiresAt: 'Ongoing',
+    category: 'auto',
+    distanceMeters: 1450,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '17',
+    businessName: 'Pine Tree Cellular',
+    title: '10% Off Accessories',
+    subtitle: 'In-store accessory purchases',
+    discountDetail: '10% off accessories',
+    expiresAt: 'Ongoing',
+    category: 'retail',
+    distanceMeters: 870,
+    percentOff: 10,
+    address: 'Waterville, ME',
+  },
+  {
+    id: '18',
+    businessName: 'Fieldstone Garden',
+    title: '15% Off Plants & Trees',
+    subtitle: '$50 min. purchase on no-sale items',
+    discountDetail: '15% off trees, shrubs, perennials and annuals in-stock, no-sale items with $50.00 minimum purchase.',
+    expiresAt: 'Ongoing',
+    category: 'retail',
+    distanceMeters: 2100,
+    percentOff: 15,
+    address: 'Waterville, ME',
+  },
+];
+
+export const MOCK_USER = {
+  name: 'Colin Baird',
+  email: 'cbaird27@colby.edu',
+  id: 'LOKALA-98765',
+  memberType: 'Colby Student · MMCC Member',
+};
+
+export const MOCK_BUSINESS = {
+  name: 'Mbingo Mountain Coffee',
+  owner: 'Churchill Nanje',
+  totalRedemptions: 143,
+  newCustomers: 38,
+  monthlyRevenue: 4820,
+  lokalaRevenue: 1240,
+  weeklyData: [
+    { day: 'Mon', redemptions: 12 },
+    { day: 'Tue', redemptions: 18 },
+    { day: 'Wed', redemptions: 9 },
+    { day: 'Thu', redemptions: 24 },
+    { day: 'Fri', redemptions: 31 },
+    { day: 'Sat', redemptions: 28 },
+    { day: 'Sun', redemptions: 21 },
+  ],
+  activeDeal: {
+    title: 'Free Coffee After 10 Visits',
+    redemptionsThisMonth: 143,
+    costPerAcquisition: '$2.10',
+  }
+};
+
+export interface Redemption {
+  id: string;
+  businessName: string;
+  dealTitle: string;
+  discountDetail: string;
+  redeemedAt: string; // human-readable
+  category: Deal['category'];
+}
+
+export const MOCK_REDEMPTIONS: Redemption[] = [
+  {
+    id: 'r1',
+    businessName: 'Silver Street Tavern',
+    dealTitle: '10% Off Food Order',
+    discountDetail: '10% off food order',
+    redeemedAt: 'Today, 12:34 PM',
+    category: 'drinks',
+  },
+  {
+    id: 'r2',
+    businessName: 'Jewel of India',
+    dealTitle: '10% Off Lunch or Dinner',
+    discountDetail: '10% off lunch or dinner',
+    redeemedAt: 'Yesterday, 7:10 PM',
+    category: 'food',
+  },
+  {
+    id: 'r3',
+    businessName: 'Aroma Joe\'s',
+    dealTitle: '$1 Off Any Drink — Mondays',
+    discountDetail: '$1 off any size drink',
+    redeemedAt: 'Mon, Jun 2 · 8:45 AM',
+    category: 'coffee',
+  },
+  {
+    id: 'r4',
+    businessName: 'Firehouse Subs',
+    dealTitle: 'Free Fountain Drink',
+    discountDetail: 'Free fountain drink with any purchase',
+    redeemedAt: 'Sat, May 31 · 1:22 PM',
+    category: 'food',
+  },
+  {
+    id: 'r5',
+    businessName: 'Apollo Day Spa & Salon',
+    dealTitle: '10% Off Any Products',
+    discountDetail: '10% off any purchase of products',
+    redeemedAt: 'Fri, May 30 · 3:05 PM',
+    category: 'health',
+  },
+];
