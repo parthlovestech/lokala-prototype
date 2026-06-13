@@ -216,8 +216,15 @@ export default function NearbyScreen() {
                   onPress={() => handleDealPress(d)}
                   zIndex={isSelected ? 999 : 1}
                 >
-                  <View style={[styles.markerDotWrap, isSelected && styles.markerDotWrapSelected]}>
+                  <View style={[styles.markerPill, isSelected && styles.markerPillSelected]}>
                     <View style={[styles.markerDotInner, isSelected && styles.markerDotInnerSelected]} />
+                    <Text 
+                      style={[styles.markerPillText, isSelected && styles.markerPillTextSelected]} 
+                      numberOfLines={1} 
+                      ellipsizeMode="tail"
+                    >
+                      {d.businessName}
+                    </Text>
                   </View>
                 </Marker>
               );
@@ -375,10 +382,46 @@ const styles = StyleSheet.create({
   webMapFallback: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' },
   webMapText: { marginTop: 12, color: '#64748B', fontWeight: '500' },
 
-  markerDotWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 4 },
-  markerDotWrapSelected: { backgroundColor: '#0F172A', width: 32, height: 32, borderRadius: 16, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
-  markerDotInner: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#059669' },
-  markerDotInnerSelected: { backgroundColor: '#FFF' },
+  // New Pill Marker Styles
+  markerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+    maxWidth: 120, // Prevents giant names from cluttering
+  },
+  markerPillSelected: {
+    backgroundColor: '#0F172A',
+    transform: [{ scale: 1.05 }],
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  markerDotInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#059669',
+    marginRight: 6,
+  },
+  markerDotInnerSelected: {
+    backgroundColor: '#10B981', // Slightly brighter green to pop on dark bg
+  },
+  markerPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  markerPillTextSelected: {
+    color: '#FFF',
+  },
 
   sheetContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: SHEET_HEIGHT, backgroundColor: '#FAFAFA', borderTopLeftRadius: 28, borderTopRightRadius: 28, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 12 },
   sheetHeader: { height: HEADER_HEIGHT, alignItems: 'center', paddingTop: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#FAFAFA', borderTopLeftRadius: 28, borderTopRightRadius: 28 },
