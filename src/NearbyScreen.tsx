@@ -31,9 +31,9 @@ function formatDistance(meters: number): string {
 }
 
 function getDistanceColor(m: number) {
-  if (m < 800) return '#059669'; 
-  if (m < 3200) return '#D97706'; 
-  return '#64748B'; 
+  if (m < 800) return '#059669';
+  if (m < 3200) return '#D97706';
+  return '#64748B';
 }
 
 function getBadgeStyle(m: number) {
@@ -45,23 +45,21 @@ function getBadgeStyle(m: number) {
 const openMaps = (deal: Deal) => {
   const label = encodeURIComponent(deal.businessName);
   let url = '';
-
   if (deal.lat && deal.lng) {
     const latLng = `${deal.lat},${deal.lng}`;
     url = Platform.select({
       ios: `maps://0,0?q=${label}&ll=${latLng}`,
       android: `geo:0,0?q=${latLng}(${label})`,
-      default: `https://www.google.com/maps/search/?api=1&query=${deal.lat},${deal.lng}`
-    });
+      default: `https://www.google.com/maps/search/?api=1&query=${deal.lat},${deal.lng}`,
+    }) ?? '';
   } else {
     const query = encodeURIComponent(`${deal.businessName} ${deal.address}`);
     url = Platform.select({
       ios: `maps://?q=${query}`,
       android: `geo:0,0?q=${query}`,
-      default: `https://www.google.com/maps/search/?api=1&query=${query}`
-    });
+      default: `https://www.google.com/maps/search/?api=1&query=${query}`,
+    }) ?? '';
   }
-
   if (url) Linking.openURL(url);
 };
 
@@ -70,22 +68,40 @@ export default function NearbyScreen() {
   const mapRef = useRef<MapView>(null);
 
   const [sortedDeals, setSortedDeals] = useState<Deal[]>([]);
-  const [userLoc, setUserLoc] = useState<Location.LocationObjectCoords | null>(null);
   const [locating, setLocating] = useState(true);
 
-  // Modal & Selection states
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
   const [hasPressedDiscount, setHasPressedDiscount] = useState(false);
   const [showBizDetail, setShowBizDetail] = useState(false);
   const [isRedeeming, setIsRedeeming] = useState(false);
 
-  // Bottom Sheet states
+  // List bottom-sheet pan
   const isOpenRef = useRef(true);
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // Waterville, ME default center
+  // Modal swipe-to-close — attached only to handle zone
+  const modalPanY = useRef(new Animated.Value(0)).current;
+
+  const modalHandlePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) modalPanY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80 || g.vy > 1.0) {
+          Animated.timing(modalPanY, { toValue: 900, duration: 220, useNativeDriver: true }).start(closeModal);
+        } else {
+          Animated.spring(modalPanY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
   const defaultRegion = {
-    latitude: 44.5520,
+    latitude: 44.552,
     longitude: -69.6317,
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
@@ -100,17 +116,13 @@ export default function NearbyScreen() {
           setLocating(false);
           return;
         }
-
         let location = await Location.getCurrentPositionAsync({});
-        setUserLoc(location.coords);
-        
         mapRef.current?.animateToRegion({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
           latitudeDelta: 0.04,
           longitudeDelta: 0.04,
         }, 1000);
-
         const calculated = deals.map(d => {
           let actualDist = d.distanceMeters;
           if (d.lat && d.lng) {
@@ -118,7 +130,6 @@ export default function NearbyScreen() {
           }
           return { ...d, calculatedDistance: actualDist };
         }).sort((a: any, b: any) => a.calculatedDistance - b.calculatedDistance);
-
         setSortedDeals(calculated);
       } catch (err) {
         console.warn('Location error', err);
@@ -131,32 +142,19 @@ export default function NearbyScreen() {
 
   const snapTo = (open: boolean) => {
     isOpenRef.current = open;
-    Animated.spring(translateY, {
-      toValue: open ? 0 : CLOSED_OFFSET,
-      useNativeDriver: true,
-      bounciness: 4,
-    }).start();
+    Animated.spring(translateY, { toValue: open ? 0 : CLOSED_OFFSET, useNativeDriver: true, bounciness: 4 }).start();
   };
 
-  const panResponder = useRef(
+  const listPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true, // Capture taps too
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 5,
-      onPanResponderRelease: (_, gesture) => {
-        if (Math.abs(gesture.dy) < 5 && Math.abs(gesture.dx) < 5) {
-          // Tap treated as toggle
-          snapTo(!isOpenRef.current);
-        } else if (gesture.dy > 30 && isOpenRef.current) {
-          // Swipe down to close
-          snapTo(false); 
-        } else if (gesture.dy < -30 && !isOpenRef.current) {
-          // Swipe up to open
-          snapTo(true); 
-        } else {
-          // Revert to current state
-          snapTo(isOpenRef.current);
-        }
-      }
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
+      onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dy) < 5 && Math.abs(g.dx) < 5) snapTo(!isOpenRef.current);
+        else if (g.dy > 30 && isOpenRef.current) snapTo(false);
+        else if (g.dy < -30 && !isOpenRef.current) snapTo(true);
+        else snapTo(isOpenRef.current);
+      },
     })
   ).current;
 
@@ -169,7 +167,9 @@ export default function NearbyScreen() {
         longitudeDelta: 0.005,
       }, 800);
     }
+    modalPanY.setValue(0);
     setSelectedDeal(deal);
+    setActiveMarkerId(deal.id);
   };
 
   const handleRedeem = async () => {
@@ -184,6 +184,7 @@ export default function NearbyScreen() {
     setSelectedDeal(null);
     setHasPressedDiscount(false);
     setShowBizDetail(false);
+    modalPanY.setValue(0);
   };
 
   const mapDeals = sortedDeals.filter(d => d.lat && d.lng).slice(0, 25);
@@ -206,7 +207,7 @@ export default function NearbyScreen() {
             mapPadding={{ top: 0, right: 0, left: 0, bottom: HEADER_HEIGHT }}
           >
             {mapDeals.map(d => {
-              const isSelected = selectedDeal?.id === d.id;
+              const isSelected = activeMarkerId === d.id;
               return (
                 <Marker
                   key={d.id}
@@ -231,7 +232,7 @@ export default function NearbyScreen() {
       </View>
 
       <Animated.View style={[styles.sheetContainer, { transform: [{ translateY }] }]}>
-        <View style={styles.sheetHeader} {...panResponder.panHandlers}>
+        <View style={styles.sheetHeader} {...listPanResponder.panHandlers}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>Places Nearby</Text>
           <Text style={styles.sheetSub}>
@@ -240,9 +241,7 @@ export default function NearbyScreen() {
         </View>
 
         {locating ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="small" color="#059669" />
-          </View>
+          <View style={styles.loadingWrap}><ActivityIndicator size="small" color="#059669" /></View>
         ) : (
           <FlatList
             data={sortedDeals}
@@ -253,25 +252,18 @@ export default function NearbyScreen() {
               const dist = (item as any).calculatedDistance ?? item.distanceMeters;
               const badge = getBadgeStyle(dist);
               const distColor = getDistanceColor(dist);
-              
               return (
                 <View style={styles.row}>
                   <View style={styles.timelineCol}>
                     <View style={[styles.dot, { backgroundColor: distColor }]} />
                     {index < sortedDeals.length - 1 && <View style={styles.line} />}
                   </View>
-                  <TouchableOpacity 
-                    style={styles.card}
-                    activeOpacity={0.7}
-                    onPress={() => handleDealPress(item)}
-                  >
+                  <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => handleDealPress(item)}>
                     <View style={styles.cardHeader}>
                       <Text style={styles.bizName}>{item.businessName}</Text>
                       <View style={[styles.distBadge, { backgroundColor: badge.bg }]}>
                         <Ionicons name="navigate-outline" size={12} color={badge.text} />
-                        <Text style={[styles.distText, { color: badge.text }]}>
-                          {formatDistance(dist)}
-                        </Text>
+                        <Text style={[styles.distText, { color: badge.text }]}>{formatDistance(dist)}</Text>
                       </View>
                     </View>
                     <Text style={styles.dealTitle}>{item.title}</Text>
@@ -283,100 +275,96 @@ export default function NearbyScreen() {
         )}
       </Animated.View>
 
-      <Modal 
-        visible={!!selectedDeal} 
-        animationType="slide" 
-        presentationStyle="pageSheet"
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalContentFullscreen}>
-          <View style={styles.modalHandle} />
+      <Modal visible={!!selectedDeal} animationType="slide" transparent={true} onRequestClose={closeModal}>
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeModal} />
+          <Animated.View style={[styles.modalBottomSheet, { transform: [{ translateY: modalPanY }] }]}>
 
-          {hasPressedDiscount ? (
-            <View style={styles.successWrap}>
-              <Text style={styles.successTitle}>Discount Unlocked!</Text>
-              <Text style={styles.qrLabel}>Present to cashier to verify</Text>
-              
-              <View style={styles.qrWrap}>
-                <Image source={require('../assets/qrcode.png')} style={styles.staticQr} resizeMode="contain" />
-              </View>
-              
-              <Text style={styles.qrMemberId}>{profile?.member_id}</Text>
-              <Text style={styles.qrHelperText}>Scan or manually verify Member ID</Text>
-
-              <TouchableOpacity style={[styles.cancelBtn, { marginTop: 24 }]} onPress={closeModal}>
-                <Text style={[styles.cancelBtnText, { color: '#059669', fontSize: 16 }]}>Done</Text>
-              </TouchableOpacity>
+            {/* Draggable handle zone only */}
+            <View style={styles.handleZone} {...modalHandlePanResponder.panHandlers}>
+              <View style={styles.modalHandle} />
             </View>
-          ) : showBizDetail ? (
-            <>
-              <TouchableOpacity style={styles.backRow} onPress={() => setShowBizDetail(false)}>
-                <Ionicons name="arrow-back" size={18} color="#64748B" />
-                <Text style={styles.backText}>Back to deal</Text>
-              </TouchableOpacity>
-              <Text style={styles.bizDetailName}>{selectedDeal?.businessName}</Text>
-              <Text style={styles.bizDetailAddress}>{selectedDeal?.address}</Text>
 
-              <TouchableOpacity style={styles.actionCard} onPress={() => selectedDeal && openMaps(selectedDeal)} activeOpacity={0.8}>
-                <View style={[styles.actionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                  <Ionicons name="map" size={20} color="#059669" />
+            {hasPressedDiscount ? (
+              <View style={styles.successWrap}>
+                <Text style={styles.successTitle}>Discount Unlocked!</Text>
+                <Text style={styles.qrLabel}>Present to cashier to verify</Text>
+                <View style={styles.qrWrap}>
+                  <Image source={require('../assets/qrcode.png')} style={styles.staticQr} resizeMode="contain" />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitle}>Get Directions</Text>
-                  <Text style={styles.actionSub}>Open in Maps</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
-              </TouchableOpacity>
-
-              {selectedDeal?.phone ? (
-                <TouchableOpacity style={styles.actionCard} onPress={() => Linking.openURL(`tel:${selectedDeal.phone}`)} activeOpacity={0.8}>
-                  <View style={[styles.actionIconWrap, { backgroundColor: '#F0F9FF' }]}>
-                    <Ionicons name="call" size={20} color="#0284C7" />
+                <Text style={styles.qrMemberId}>{profile?.member_id}</Text>
+                <Text style={styles.qrHelperText}>Scan or manually verify Member ID</Text>
+                <TouchableOpacity style={[styles.cancelBtn, { marginTop: 24 }]} onPress={closeModal}>
+                  <Text style={[styles.cancelBtnText, { color: '#059669', fontSize: 16 }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            ) : showBizDetail ? (
+              <>
+                <TouchableOpacity style={styles.backRow} onPress={() => setShowBizDetail(false)}>
+                  <Ionicons name="arrow-back" size={18} color="#64748B" />
+                  <Text style={styles.backText}>Back to deal</Text>
+                </TouchableOpacity>
+                <Text style={styles.bizDetailName}>{selectedDeal?.businessName}</Text>
+                <Text style={styles.bizDetailAddress}>{selectedDeal?.address}</Text>
+                <TouchableOpacity style={styles.actionCard} onPress={() => selectedDeal && openMaps(selectedDeal)} activeOpacity={0.8}>
+                  <View style={[styles.actionIconWrap, { backgroundColor: '#ECFDF5' }]}>
+                    <Ionicons name="map" size={20} color="#059669" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.actionTitle}>Call Business</Text>
-                    <Text style={styles.actionSub}>{selectedDeal.phone}</Text>
+                    <Text style={styles.actionTitle}>Get Directions</Text>
+                    <Text style={styles.actionSub}>Open in Maps</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                 </TouchableOpacity>
-              ) : (
-                <View style={styles.noBizInfo}><Text style={styles.noBizInfoText}>Phone number not available.</Text></View>
-              )}
-
-              <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
-                <Text style={styles.cancelBtnText}>Close</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <View style={styles.modalTopRow}>
-                <TouchableOpacity onPress={() => setShowBizDetail(true)} style={styles.modalBizRow} activeOpacity={0.7}>
-                  <Text style={styles.modalBiz}>{selectedDeal?.businessName}</Text>
-                  <Ionicons name="chevron-forward" size={14} color="#94A3B8" style={{ marginLeft: 4 }} />
+                {selectedDeal?.phone ? (
+                  <TouchableOpacity style={styles.actionCard} onPress={() => Linking.openURL(`tel:${selectedDeal.phone}`)} activeOpacity={0.8}>
+                    <View style={[styles.actionIconWrap, { backgroundColor: '#F0F9FF' }]}>
+                      <Ionicons name="call" size={20} color="#0284C7" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.actionTitle}>Call Business</Text>
+                      <Text style={styles.actionSub}>{selectedDeal.phone}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.noBizInfo}>
+                    <Text style={styles.noBizInfoText}>Phone number not available.</Text>
+                  </View>
+                )}
+                <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
+                  <Text style={styles.cancelBtnText}>Close</Text>
                 </TouchableOpacity>
-              </View>
-
-              <Text style={styles.modalTitle}>{selectedDeal?.title}</Text>
-              
-              <View style={styles.discountDetailCard}>
-                <Text style={styles.discountDetailText}>{selectedDeal?.discountDetail}</Text>
-                <Text style={styles.discountExpiry}>Valid: {selectedDeal?.expiresAt}</Text>
-              </View>
-
-              <View style={{ flex: 1 }} />
-
-              <TouchableOpacity style={[styles.redeemBtn, isRedeeming && { opacity: 0.7 }]} onPress={handleRedeem} disabled={isRedeeming} activeOpacity={0.9}>
-                {isRedeeming ? <ActivityIndicator color="#fff" /> : <Text style={styles.redeemBtnText}>Press for discount</Text>}
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
-                <Text style={styles.cancelBtnText}>Close</Text>
-              </TouchableOpacity>
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <View style={styles.modalTopRow}>
+                  <TouchableOpacity onPress={() => setShowBizDetail(true)} style={styles.modalBizRow} activeOpacity={0.7}>
+                    <Text style={styles.modalBiz}>{selectedDeal?.businessName}</Text>
+                    <Ionicons name="chevron-forward" size={14} color="#94A3B8" style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.modalTitle}>{selectedDeal?.title}</Text>
+                <View style={styles.discountDetailCard}>
+                  <Text style={styles.discountDetailText}>{selectedDeal?.discountDetail}</Text>
+                  <Text style={styles.discountExpiry}>Valid: {selectedDeal?.expiresAt}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.redeemBtn, isRedeeming && { opacity: 0.7 }]}
+                  onPress={handleRedeem}
+                  disabled={isRedeeming}
+                  activeOpacity={0.9}
+                >
+                  {isRedeeming ? <ActivityIndicator color="#fff" /> : <Text style={styles.redeemBtnText}>Press for discount</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
+                  <Text style={styles.cancelBtnText}>Close</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </Animated.View>
         </View>
       </Modal>
-
     </View>
   );
 }
@@ -387,35 +375,13 @@ const styles = StyleSheet.create({
   webMapFallback: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F5F9' },
   webMapText: { marginTop: 12, color: '#64748B', fontWeight: '500' },
 
-  markerDotWrap: {
-    width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF',
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25, shadowRadius: 4, elevation: 4,
-  },
-  markerDotWrapSelected: {
-    backgroundColor: '#0F172A',
-    width: 32, height: 32, borderRadius: 16,
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
-  },
+  markerDotWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 4 },
+  markerDotWrapSelected: { backgroundColor: '#0F172A', width: 32, height: 32, borderRadius: 16, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
   markerDotInner: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#059669' },
   markerDotInnerSelected: { backgroundColor: '#FFF' },
 
-  sheetContainer: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: SHEET_HEIGHT,
-    backgroundColor: '#FAFAFA',
-    borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08, shadowRadius: 16, elevation: 12,
-  },
-  sheetHeader: { 
-    height: HEADER_HEIGHT,
-    alignItems: 'center', paddingTop: 12, 
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-    backgroundColor: '#FAFAFA', borderTopLeftRadius: 28, borderTopRightRadius: 28,
-  },
+  sheetContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: SHEET_HEIGHT, backgroundColor: '#FAFAFA', borderTopLeftRadius: 28, borderTopRightRadius: 28, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 12 },
+  sheetHeader: { height: HEADER_HEIGHT, alignItems: 'center', paddingTop: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#FAFAFA', borderTopLeftRadius: 28, borderTopRightRadius: 28 },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', marginBottom: 12 },
   sheetTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A', letterSpacing: -0.3 },
   sheetSub: { fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -428,19 +394,24 @@ const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#FAFAFA' },
   line: { width: 2, flex: 1, backgroundColor: '#E2E8F0', marginTop: 6, borderRadius: 1 },
 
-  card: {
-    flex: 1, backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16,
-    borderWidth: 1, borderColor: '#F1F5F9',
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6, elevation: 1
-  },
+  card: { flex: 1, backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   bizName: { fontSize: 12, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.7, flex: 1 },
   distBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   distText: { fontSize: 12, fontWeight: '700' },
   dealTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', letterSpacing: -0.2 },
 
-  modalContentFullscreen: { flex: 1, backgroundColor: '#FFF', padding: 24, paddingTop: 16, alignItems: 'center' },
-  modalHandle: { width: 40, height: 5, backgroundColor: '#E2E8F0', borderRadius: 3, marginBottom: 24 },
+  // Modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'flex-end' },
+  modalBottomSheet: {
+    backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    alignItems: 'center', maxHeight: '90%',
+  },
+
+  handleZone: { width: '100%', alignItems: 'center', paddingTop: 14, paddingBottom: 18 },
+  modalHandle: { width: 40, height: 5, backgroundColor: '#E2E8F0', borderRadius: 3 },
 
   modalTopRow: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 12 },
   modalBizRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
@@ -475,6 +446,6 @@ const styles = StyleSheet.create({
   noBizInfo: { paddingVertical: 24, alignItems: 'center' },
   noBizInfoText: { fontSize: 14, color: '#94A3B8' },
 
-  successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40, width: '100%' },
+  successWrap: { width: '100%', alignItems: 'center', marginTop: 16 },
   successTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A', marginBottom: 24, letterSpacing: -0.5 },
 });
