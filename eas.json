@@ -1,0 +1,15 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ifvnofdnjvmsfsxhixip.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlmdm5vZmRuanZtc2ZzeGhpeGlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2OTU1NjgsImV4cCI6MjA4NDI3MTU2OH0.PsTN1zWZdgGukJnOWQjRF0_KrakFUBa1WsYyZWdXnsE"
+      }
+    }
+  }
+}
