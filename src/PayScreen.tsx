@@ -21,7 +21,7 @@ const TIP_PERCENTS = [15, 20, 25];
 // OR use your production domain. We fallback to the live production server.
 const API_URL = process.env.EXPO_PUBLIC_API_URL 
   ? `${process.env.EXPO_PUBLIC_API_URL}/api/stripe/payment-intent`
-  : 'http://137.146.127.112:3000/api/stripe/payment-intent';
+  : 'https://www.mylokala.com/api/stripe/payment-intent';
 
 
 export default function PayScreen() {
