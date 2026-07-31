@@ -56,24 +56,26 @@ export function buildQrValue(businessId: string): string {
 export function parseQrValue(raw: string): string | null {
   const value = raw.trim();
   
-  // 1. Try to parse it as the Web URL format (https://www.mylokala.com/pay/CODE)
   try {
     const url = new URL(value);
     if (url.pathname.includes('/pay/')) {
-      const parts = url.pathname.split('/');
-      return parts[parts.length - 1] || null; // Returns the public_code
+      // Removes trailing slash if present, then splits
+      const cleanPath = url.pathname.replace(/\/$/, '');
+      const parts = cleanPath.split('/');
+      const code = parts[parts.length - 1];
+      if (code && code !== 'pay') return code;
     }
   } catch (e) {
     // Ignore URL parse errors, fall back to legacy check
   }
 
-  // 2. Fallback for legacy QR codes (lokala:pay:UUID)
+  // Fallback for legacy QR codes (lokala:pay:UUID)
   if (value.startsWith(QR_PREFIX)) {
     const id = value.slice(QR_PREFIX.length);
     return id.length > 0 ? id : null;
   }
   
-  // 3. Fallback for manual entry (user types "nAOpsG...")
+  // Fallback for manual entry
   if (value.length > 0 && !value.includes(' ')) {
     return value;
   }
@@ -83,28 +85,30 @@ export function parseQrValue(raw: string): string | null {
 
 /** 
  * Look up a business by its public code (from the QR code URL).
- * Uses the Supabase RPC function that returns business_id.
+ * Uses the Supabase RPC function that returns business details.
  */
 export async function getBusinessByPublicCode(publicCode: string): Promise<{ id: string, name: string } | null> {
   const { data, error } = await supabase.rpc('get_business_for_qr_code', {
     input_public_code: publicCode,
   });
 
-  if (error) {
+  if (error || !data) {
     console.error('getBusinessByPublicCode error:', error);
     return null;
   }
-  
-  if (!data) return null;
 
-  // Handle the response (could be an array or object depending on PostgREST version)
   const row = Array.isArray(data) ? data[0] : data;
   
-  if (!row || !row.business_id) return null;
+  // If the RPC returned nothing valid
+  if (!row || (!row.public_code && !row.business_name)) return null;
+
+  // The RPC intentionally hides internal IDs for security. 
+  // We pass the publicCode forward as the ID, and the payment API handles resolving it.
+  const resolvedId = row.business_owner_id || row.owner_id || row.business_id || row.id || publicCode;
 
   return {
-    id: row.business_id,
-    name: row.business_name
+    id: resolvedId,
+    name: row.business_name || 'Lokala Business'
   };
 }
 

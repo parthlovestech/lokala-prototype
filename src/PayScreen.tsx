@@ -17,11 +17,12 @@ const TIP_PERCENTS = [15, 20, 25];
 // Replace this with your actual computer's local IP address when testing on a physical device
 // For iOS simulator or Android emulator, 'http://localhost:3000' works
 // For physical device, use your computer's IP address (e.g., 'http://192.168.1.10:3000')
-const API_URL = Platform.select({
-  ios: 'http://137.146.127.112:3000/api/stripe/payment-intent',
-  android: 'http://137.146.127.112:3000/api/stripe/payment-intent',
-  default: 'http://137.146.127.112:3000/api/stripe/payment-intent',
-});
+// Replace this with your actual computer's local IP address when testing locally,
+// OR use your production domain. We fallback to the live production server.
+const API_URL = process.env.EXPO_PUBLIC_API_URL 
+  ? `${process.env.EXPO_PUBLIC_API_URL}/api/stripe/payment-intent`
+  : 'http://137.146.127.112:3000/api/stripe/payment-intent';
+
 
 export default function PayScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -70,7 +71,8 @@ export default function PayScreen() {
     setError(null);
 
     try {
-      // 1. Ask Next.js Backend for a Stripe Client Secret
+      console.log("1. Contacting web backend at:", API_URL);
+      
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,30 +82,40 @@ export default function PayScreen() {
         }),
       });
 
-      const data = await response.json();
+      console.log("2. Backend responded with status:", response.status);
+      
+      // Read as text first to catch HTML errors (like 404s or 500s) instead of crashing
+      const text = await response.text(); 
+      console.log("3. Backend response body:", text);
 
-      if (!response.ok || !data.clientSecret) {
-        throw new Error(data.error || 'Failed to initialize payment.');
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Server returned an invalid response. Check your web app terminal for errors.");
       }
 
-      // 2. Initialize the Stripe Payment Sheet
+      if (!response.ok || !data.clientSecret) {
+        throw new Error(data.error || 'Failed to initialize payment on the server.');
+      }
+
+      console.log("4. Initializing Stripe Payment Sheet...");
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: businessName,
         paymentIntentClientSecret: data.clientSecret,
         allowsDelayedPaymentMethods: true,
-        // Apple Pay / Google pay can be added here easily later!
       });
 
-      if (initError) throw new Error(initError.message);
+      if (initError) throw new Error(`Stripe Init Error: ${initError.message}`);
 
-      // 3. Present the Payment Sheet to the user
+      console.log("5. Presenting Stripe Payment Sheet to user...");
       const { error: presentError } = await presentPaymentSheet();
 
       if (presentError) {
         throw new Error(presentError.message);
       }
 
-      // 4. Payment succeeded! Now save it to Supabase
+      console.log("6. Payment Success! Saving receipt to Supabase...");
       const { tip, error: submitError } = await recordTip({
         userId: user.id,
         businessId,
@@ -118,7 +130,7 @@ export default function PayScreen() {
         throw new Error(submitError ?? 'Something went wrong saving the receipt.');
       }
 
-      // 5. Navigate to Confirmation
+      console.log("7. Routing to confirmation screen...");
       navigation.replace('Confirmation', {
         businessName,
         subtotal,
@@ -128,7 +140,7 @@ export default function PayScreen() {
       });
 
     } catch (err: any) {
-      // If user cancels the sheet, the error code is 'Canceled'. We can ignore showing red text for that.
+      console.error("Payment Flow Error:", err.message);
       if (err.message !== 'The payment has been canceled' && err.message !== 'Canceled') {
         setError(err.message);
       }
