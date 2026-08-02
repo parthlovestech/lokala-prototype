@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './AuthContext';
+import { PrivacyPolicyContent, TermsOfServiceContent } from './LegalContent';
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   coffee: 'cafe-outline',
@@ -180,10 +181,7 @@ export default function AccountScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-            <Text style={styles.pText}>
-              <Text style={styles.pBold}>Section 1: Introduction</Text>{'\n'}
-              Welcome to Lokala!...
-            </Text>
+            <PrivacyPolicyContent />
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -198,10 +196,7 @@ export default function AccountScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-            <Text style={styles.pText}>
-              <Text style={styles.pBold}>1. Acceptance of Terms</Text>{'\n'}
-              By downloading, installing, or accessing Lokala via our mobile apps or website...
-            </Text>
+            <TermsOfServiceContent />
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -273,7 +268,4 @@ const styles = StyleSheet.create({
   modalCloseBtn: { padding: 4 },
   modalScroll: { flex: 1 },
   modalContent: { padding: 24, paddingBottom: 60 },
-  pText: { fontSize: 15, color: '#334155', lineHeight: 24, marginBottom: 24 },
-  pBold: { fontWeight: '700', fontSize: 17, color: '#0F172A' },
-  pSemiBold: { fontWeight: '600', color: '#1E293B' },
 });

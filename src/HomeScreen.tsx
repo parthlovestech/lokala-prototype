@@ -1,4 +1,6 @@
-import React, { useState, useRef } from 'react';
+// --- START OF FILE lokala-prototype/src/HomeScreen.tsx ---
+
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, Platform, ScrollView,
@@ -13,11 +15,10 @@ import { useAuth, Deal, SOURCE_LABELS, SOURCE_SHORT_LABELS } from './AuthContext
 // the discount deals below — these are places that accept Lokala as payment).
 const PAY_LOCATIONS = [
   { id: 'p1', name: 'Cushnoc Cantina', address: 'Waterville, ME' },
-  { id: 'p2', name: 'Silver Street Tavern', address: '2 Silver St, Waterville ME' },
+  { id: 'p2', name: 'Silver Street Tavern', address: '2 Silver St, Waterville' },
   { id: 'p3', name: 'Holy Cannoli', address: 'Waterville, ME' },
 ];
 
-// Removed 'drinks' category — only coffee discounts exist currently
 const CATEGORIES = ['All', 'coffee', 'food', 'health', 'retail', 'services', 'auto'];
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   All: 'apps', coffee: 'cafe', food: 'restaurant',
@@ -62,6 +63,51 @@ export default function HomeScreen() {
   const [hasPressedDiscount, setHasPressedDiscount] = useState(false);
   const [isRedeeming, setIsRedeeming] = useState(false);
 
+  // --- Pulse Animations for Status Dots (staggered per card) ---
+  const pulseAnims = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0.6),
+    new Animated.Value(1.2),
+  ]).current;
+
+  useEffect(() => {
+    const loops = pulseAnims.map((anim, index) => {
+      const initialDelay = index * 600;
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.delay(initialDelay),
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+      return loop;
+    });
+    
+    return () => loops.forEach(loop => loop.stop());
+  }, []);
+
+  const pulseScales = pulseAnims.map(anim => 
+    anim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.7, 1.15],
+    })
+  );
+  const pulseOpacities = pulseAnims.map(anim => 
+    anim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.6, 0],
+    })
+  );
+
   // --- Slide to Close Logic ---
   const panY = useRef(new Animated.Value(0)).current;
   const resetPan = () => Animated.spring(panY, { toValue: 0, useNativeDriver: true }).start();
@@ -82,10 +128,8 @@ export default function HomeScreen() {
       }
     })
   ).current;
-  // ----------------------------
 
   const filteredDeals = deals.filter((d: Deal) => {
-    // Search only by business name (not deal title) so users know exactly what they're searching
     const matchesSearch = d.businessName.toLowerCase().includes(search.toLowerCase());
     const matchesTab = isMyDealsTab ? d.isSaved : true;
     const matchesCategory = activeCategory === 'All' || d.category === activeCategory;
@@ -100,24 +144,33 @@ export default function HomeScreen() {
     setHasPressedDiscount(true);
   };
 
-  // Handle saving from modal with local state update
   const handleToggleSave = (dealId: string) => {
     if (!selectedDeal) return;
-    
-    // Call the context toggle function
     toggleSave(dealId);
-    
-    // Update local selectedDeal state to reflect the change immediately
-    setSelectedDeal({
-      ...selectedDeal,
-      isSaved: !selectedDeal.isSaved
-    });
+    setSelectedDeal({ ...selectedDeal, isSaved: !selectedDeal.isSaved });
   };
 
   const closeModal = () => {
     setSelectedDeal(null);
     setHasPressedDiscount(false);
     panY.setValue(0);
+  };
+
+  // --- Press Animation for Cards ---
+  const cardScale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(cardScale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 50,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(cardScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+    }).start();
   };
 
   const renderDeal = ({ item }: { item: Deal }) => {
@@ -150,6 +203,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={[styles.saveBtn, item.isSaved && styles.saveBtnActive]}
             onPress={(e) => { e.stopPropagation(); toggleSave(item.id); }}
+            activeOpacity={0.7}
           >
             <Ionicons name={item.isSaved ? 'bookmark' : 'bookmark-outline'} size={20} color={item.isSaved ? '#059669' : '#94A3B8'} />
           </TouchableOpacity>
@@ -169,31 +223,65 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* --- COMPACT LOKALA DIRECT SECTION --- */}
         {!isMyDealsTab && (
-          <View style={styles.payStripWrap}>
-            <Text style={styles.payStripLabel}>Lokala is now available at</Text>
+          <View style={styles.directPaySection}>
+            <View style={styles.directPayHeader}>
+              <Ionicons name="flash" size={14} color="#059669" />
+              <Text style={styles.directPayTitle}>Lokala Direct</Text>
+            </View>
+            
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+              contentContainerStyle={styles.directPayScroll}
             >
-              {PAY_LOCATIONS.map(biz => (
-                <TouchableOpacity
-                  key={biz.id}
-                  style={styles.payCard}
-                  activeOpacity={0.85}
-                  onPress={() => openMaps({ businessName: biz.name, address: biz.address })}
-                >
-                  <View style={styles.payCardIconWrap}>
-                    <Ionicons name="card" size={16} color="#FFF" />
-                  </View>
-                  <Text style={styles.payCardText} numberOfLines={1}>{biz.name}</Text>
-                </TouchableOpacity>
-              ))}
+              {PAY_LOCATIONS.map((biz, index) => {
+                const scale = pulseScales[index] || new Animated.Value(1);
+                const opacity = pulseOpacities[index] || new Animated.Value(0);
+                
+                return (
+                  <TouchableOpacity
+                    key={biz.id}
+                    activeOpacity={1}
+                    onPress={() => openMaps({ businessName: biz.name, address: biz.address })}
+                    onPressIn={handlePressIn}
+                    onPressOut={handlePressOut}
+                  >
+                    <Animated.View style={[
+                      styles.directPayCard,
+                      { transform: [{ scale: cardScale }] }
+                    ]}>
+                      <View style={styles.directPayAccentLine} />
+                      
+                      <View style={styles.directPayContent}>
+                        <View style={styles.directPayIconContainer}>
+                          <Animated.View 
+                            style={[
+                              styles.directPayPulse,
+                              {
+                                transform: [{ scale }],
+                                opacity,
+                              }
+                            ]} 
+                          />
+                          <Ionicons name="scan-circle-outline" size={18} color="#059669" />
+                        </View>
+                        
+                        <View style={styles.directPayTextContainer}>
+                          <Text style={styles.directPayName} numberOfLines={1}>{biz.name}</Text>
+                          <Text style={styles.directPayAddress} numberOfLines={1}>{biz.address}</Text>
+                        </View>
+                      </View>
+                    </Animated.View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         )}
 
+        {/* --- SEARCH & FILTERS --- */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
           <TextInput
@@ -249,6 +337,7 @@ export default function HomeScreen() {
           />
         )}
 
+        {/* --- ELEVATED DEAL MODAL --- */}
         <Modal 
           visible={!!selectedDeal} 
           animationType="slide" 
@@ -259,27 +348,19 @@ export default function HomeScreen() {
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeModal} />
             <Animated.View style={[styles.modalBottomSheet, { transform: [{ translateY: panY }] }]}>
               
-              {/* Draggable Handle Zone */}
               <View style={styles.handleZone} {...modalPanResponder.panHandlers}>
                 <View style={styles.modalHandle} />
               </View>
 
               {hasPressedDiscount ? (
-                /* ── DISCOUNT UNLOCKED: show actual membership card image ── */
                 <View style={styles.successWrap}>
                   <Text style={styles.successTitle}>Discount Unlocked!</Text>
                   <Text style={styles.qrLabel}>Show this card to the cashier</Text>
                   
-                  {/* Actual Card Image */}
                   <View style={styles.memberCardWrap}>
-                    <Image 
-                      source={require('../assets/card.jpeg')} 
-                      style={styles.actualCardImage} 
-                      resizeMode="contain" 
-                    />
+                    <Image source={require('../assets/card.jpeg')} style={styles.actualCardImage} resizeMode="contain" />
                   </View>
 
-                  {/* Show Member ID clearly so cashier can verify */}
                   <Text style={styles.qrMemberId}>{profile?.member_id}</Text>
                   <Text style={styles.qrHelperText}>Business verifies by Member ID</Text>
 
@@ -288,104 +369,104 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                /* ── DEAL DETAIL: unified screen with all actions ── */
-                <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
-                  {/* Business name header */}
-                  <View style={styles.modalBizHeader}>
-                    <View style={styles.modalBizNameRow}>
-                      <View style={styles.modalBizIconWrap}>
-                        <Ionicons name="storefront-outline" size={16} color="#059669" />
-                      </View>
+                <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+                  
+                  {/* Hero Header */}
+                  <View style={styles.modalHeroHeader}>
+                    <View style={styles.modalHeroHeaderLeft}>
                       <Text style={styles.modalBiz} numberOfLines={1}>{selectedDeal?.businessName}</Text>
-                    </View>
-
-                    <View style={styles.modalBizActionsCol}>
-                      {/* Source badge — lets us filter by source once non-Chamber discounts exist */}
                       <View style={styles.sourceBadge}>
-                        <Ionicons name="ribbon-outline" size={11} color="#64748B" />
+                        <Ionicons name="ribbon" size={11} color="#FFF" />
                         <Text style={styles.sourceBadgeText} numberOfLines={1}>
                           {SOURCE_LABELS[selectedDeal?.source ?? 'chamber']}
                         </Text>
                       </View>
-
-                      {/* Inline save button - NOW USING handleToggleSave */}
-                      <TouchableOpacity
-                        style={[styles.inlineSaveBtn, selectedDeal?.isSaved && styles.inlineSaveBtnActive]}
-                        onPress={() => selectedDeal && handleToggleSave(selectedDeal.id)}
-                      >
-                        <Ionicons
-                          name={selectedDeal?.isSaved ? 'bookmark' : 'bookmark-outline'}
-                          size={18}
-                          color={selectedDeal?.isSaved ? '#059669' : '#94A3B8'}
-                        />
-                        <Text style={[styles.inlineSaveBtnText, selectedDeal?.isSaved && { color: '#059669' }]}>
-                          {selectedDeal?.isSaved ? 'Saved' : 'Save'}
-                        </Text>
-                      </TouchableOpacity>
                     </View>
+                    
+                    <TouchableOpacity
+                      style={styles.modalSaveCircle}
+                      onPress={() => selectedDeal && handleToggleSave(selectedDeal.id)}
+                    >
+                      <Ionicons
+                        name={selectedDeal?.isSaved ? 'bookmark' : 'bookmark-outline'}
+                        size={22}
+                        color={selectedDeal?.isSaved ? '#059669' : '#0F172A'}
+                      />
+                    </TouchableOpacity>
                   </View>
 
-                  {/* Deal title & discount details */}
                   <Text style={styles.modalTitle}>{selectedDeal?.title}</Text>
 
-                  <View style={styles.discountDetailCard}>
-                    <Text style={styles.discountDetailText}>{selectedDeal?.discountDetail}</Text>
-                    <Text style={styles.discountExpiry}>Valid: {selectedDeal?.expiresAt}</Text>
+                  {/* The "Coupon Ticket" Look */}
+                  <View style={styles.couponContainer}>
+                    <View style={styles.couponInner}>
+                      <Text style={styles.couponLabel}>OFFER DETAILS</Text>
+                      <Text style={styles.couponText}>{selectedDeal?.discountDetail}</Text>
+                      <View style={styles.couponDivider} />
+                      <View style={styles.couponFooter}>
+                        <Ionicons name="time-outline" size={14} color="#047857" />
+                        <Text style={styles.couponExpiry}>Valid: {selectedDeal?.expiresAt}</Text>
+                      </View>
+                    </View>
+                    {/* Visual cutout dots for ticket effect */}
+                    <View style={[styles.ticketCutout, styles.ticketCutoutLeft]} />
+                    <View style={[styles.ticketCutout, styles.ticketCutoutRight]} />
                   </View>
 
-                  {/* About the business */}
-                  <View style={styles.bizInfoSection}>
-                    <Text style={styles.bizInfoSectionTitle}>About</Text>
-                    <View style={styles.bizInfoRow}>
-                      <Ionicons name="location-outline" size={16} color="#64748B" style={{ marginTop: 1 }} />
-                      <Text style={styles.bizInfoText}>{selectedDeal?.address || 'Address not available'}</Text>
-                    </View>
-                    {selectedDeal?.phone ? (
-                      <TouchableOpacity style={styles.bizInfoRow} onPress={() => Linking.openURL(`tel:${selectedDeal.phone}`)}>
-                        <Ionicons name="call-outline" size={16} color="#059669" style={{ marginTop: 1 }} />
-                        <Text style={[styles.bizInfoText, { color: '#059669' }]}>{selectedDeal.phone}</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {selectedDeal?.website ? (
-                      <TouchableOpacity style={styles.bizInfoRow} onPress={() => Linking.openURL(selectedDeal.website!)}>
-                        <Ionicons name="globe-outline" size={16} color="#059669" style={{ marginTop: 1 }} />
-                        <Text style={[styles.bizInfoText, { color: '#059669' }]} numberOfLines={1}>{selectedDeal.website}</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                  {/* Modern Quick Actions Row */}
+                  <View style={styles.quickActionsRow}>
+                    <TouchableOpacity style={styles.quickActionItem} onPress={() => selectedDeal && openMaps(selectedDeal)}>
+                      <View style={styles.quickActionCircle}>
+                        <Ionicons name="map" size={24} color="#0F172A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Directions</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      style={[styles.quickActionItem, !selectedDeal?.phone && styles.quickActionDisabled]} 
+                      onPress={() => selectedDeal?.phone && Linking.openURL(`tel:${selectedDeal.phone}`)}
+                      disabled={!selectedDeal?.phone}
+                    >
+                      <View style={styles.quickActionCircle}>
+                        <Ionicons name="call" size={24} color={selectedDeal?.phone ? "#0F172A" : "#CBD5E1"} />
+                      </View>
+                      <Text style={[styles.quickActionText, !selectedDeal?.phone && { color: '#94A3B8' }]}>Call</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.quickActionItem, !selectedDeal?.website && styles.quickActionDisabled]} 
+                      onPress={() => selectedDeal?.website && Linking.openURL(selectedDeal.website)}
+                      disabled={!selectedDeal?.website}
+                    >
+                      <View style={styles.quickActionCircle}>
+                        <Ionicons name="globe" size={24} color={selectedDeal?.website ? "#0F172A" : "#CBD5E1"} />
+                      </View>
+                      <Text style={[styles.quickActionText, !selectedDeal?.website && { color: '#94A3B8' }]}>Website</Text>
+                    </TouchableOpacity>
                   </View>
 
-                  {/* Directions button */}
-                  <TouchableOpacity
-                    style={styles.directionsActionBtn}
-                    onPress={() => selectedDeal && openMaps(selectedDeal)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.directionsActionIcon}>
-                      <Ionicons name="map-outline" size={20} color="#059669" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.directionsActionTitle}>Get Directions</Text>
-                      <Text style={styles.directionsActionSub}>Open in Maps</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
-                  </TouchableOpacity>
+                  <View style={styles.addressBox}>
+                    <Ionicons name="location-sharp" size={16} color="#64748B" />
+                    <Text style={styles.addressText}>{selectedDeal?.address || 'Address not available'}</Text>
+                  </View>
 
-                  {/* Redeem button */}
+                  {/* Redeem CTA */}
                   <TouchableOpacity
-                    style={[styles.redeemBtn, isRedeeming && { opacity: 0.7 }]}
+                    style={[styles.redeemBtn, isRedeeming && { opacity: 0.8 }]}
                     onPress={handleRedeem}
                     disabled={isRedeeming}
-                    activeOpacity={0.9}
+                    activeOpacity={0.85}
                   >
-                    {isRedeeming
-                      ? <ActivityIndicator color="#fff" />
-                      : <Text style={styles.redeemBtnText}>Press for discount</Text>
-                    }
+                    {isRedeeming ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="scan-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.redeemBtnText}>Unlock Discount</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                   
-                  <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
-                    <Text style={styles.cancelBtnText}>Close</Text>
-                  </TouchableOpacity>
                 </ScrollView>
               )}
             </Animated.View>
@@ -399,116 +480,213 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   container: { flex: 1, paddingTop: 0 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5, paddingHorizontal: 20, marginBottom: 4, marginTop: Platform.OS === 'ios' ? 8 : 4 },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: '#0F172A', letterSpacing: -0.8, paddingHorizontal: 20, marginBottom: 2, marginTop: Platform.OS === 'ios' ? 8 : 4 },
   
-  locationContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8, marginTop: 0, gap: 6 },
-  locationText: { fontSize: 14, color: '#059669', fontWeight: '600' },
+  locationContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12, marginTop: 0, gap: 6 },
+  locationText: { fontSize: 14, color: '#059669', fontWeight: '700' },
 
-  payStripWrap: { marginBottom: 14 },
-  payStripLabel: { fontSize: 12, fontWeight: '700', color: '#059669', textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 20, marginBottom: 8 },
-  payCard: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#ECFDF5', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: '#A7F3D0', shadowColor: '#059669', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1 },
-  payCardIconWrap: { width: 26, height: 26, borderRadius: 8, backgroundColor: '#059669', justifyContent: 'center', alignItems: 'center' },
-  payCardText: { fontSize: 13, fontWeight: '800', color: '#065F46', maxWidth: 140 },
+  // --- COMPACT DIRECT PAY SECTION ---
+  directPaySection: { marginBottom: 16 },
+  directPayHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    paddingHorizontal: 20, 
+    marginBottom: 8,
+  },
+  directPayTitle: { 
+    fontSize: 13, 
+    fontWeight: '800', 
+    color: '#0F172A', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.8,
+  },
+  directPayScroll: { 
+    paddingHorizontal: 20, 
+    gap: 10,
+  },
 
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 14, height: 44, marginHorizontal: 20, marginBottom: 10, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 4, elevation: 1 },
+  // Compact card - no wasted space
+  directPayCard: { 
+    width: 150,
+    height: 56,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.12)',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    position: 'relative',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  
+  directPayAccentLine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2.5,
+    backgroundColor: '#059669',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  
+  directPayContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+
+  directPayIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#ECFDF5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    flexShrink: 0,
+  },
+  directPayPulse: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+  },
+
+  directPayTextContainer: {
+    flex: 1,
+    minWidth: 0, // Prevents overflow
+  },
+  directPayName: { 
+    fontSize: 13, 
+    fontWeight: '700', 
+    color: '#0F172A',
+    marginBottom: 1,
+  },
+  directPayAddress: { 
+    fontSize: 10, 
+    color: '#64748B', 
+    fontWeight: '500',
+  },
+
+  // --- SEARCH & CATEGORIES ---
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, paddingHorizontal: 16, height: 48, marginHorizontal: 20, marginBottom: 14, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1, borderWidth: 1, borderColor: '#F1F5F9' },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, fontSize: 15, color: '#0F172A' },
 
-  categoryRow: { marginBottom: 10, flexGrow: 0, minHeight: 44 },
-  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#F1F5F9', minHeight: 32 },
+  categoryRow: { marginBottom: 12, flexGrow: 0, minHeight: 44 },
+  catChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF', borderRadius: 24, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#F1F5F9', minHeight: 36, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 3, elevation: 1 },
   catChipActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
   catChipText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   catChipTextActive: { color: '#FFF' },
 
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  card: { backgroundColor: '#FFF', borderRadius: 20, padding: 18, marginBottom: 14, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
+  // --- LIST CARDS ---
+  card: { backgroundColor: '#FFF', borderRadius: 24, padding: 20, marginBottom: 16, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9' },
   cardContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   textContainer: { flex: 1, paddingRight: 16 },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 },
-  businessLabel: { fontSize: 12, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.8, flex: 1 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 8, gap: 8, flexWrap: 'wrap' },
+  businessLabel: { fontSize: 12, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.8 },
   sourceChipMini: { backgroundColor: '#F1F5F9', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
   sourceChipMiniText: { fontSize: 9, fontWeight: '800', color: '#64748B', letterSpacing: 0.4 },
-  title: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 4, letterSpacing: -0.3 },
-  subtitle: { fontSize: 14, color: '#64748B', marginBottom: 14 },
+  title: { fontSize: 19, fontWeight: '800', color: '#0F172A', marginBottom: 4, letterSpacing: -0.4 },
+  subtitle: { fontSize: 14, color: '#64748B', marginBottom: 16 },
   
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   discountTag: { backgroundColor: '#ECFDF5', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   discountTagAlt: { backgroundColor: '#F1F5F9' },
-  discountTagText: { fontSize: 12, fontWeight: '700', color: '#059669' },
+  discountTagText: { fontSize: 12, fontWeight: '800', color: '#059669' },
   discountTagTextAlt: { color: '#475569' },
   
-  saveBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
-  saveBtnActive: { backgroundColor: '#ECFDF5' },
+  saveBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
+  saveBtnActive: { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' },
 
   emptyState: { alignItems: 'center', marginTop: 80 },
   emptyIconWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 8 },
   emptySub: { fontSize: 15, color: '#64748B', textAlign: 'center' },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'flex-end' },
-  modalBottomSheet: { width: '100%', backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, alignItems: 'center', maxHeight: '90%' },
+  // --- MODAL BACKDROP & BASE ---
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'flex-end' },
+  modalBottomSheet: { width: '100%', backgroundColor: '#FFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, alignItems: 'center', maxHeight: '92%' },
   
-  handleZone: { width: '100%', alignItems: 'center', paddingTop: 14, paddingBottom: 18 },
-  modalHandle: { width: 40, height: 5, backgroundColor: '#E2E8F0', borderRadius: 3 },
+  handleZone: { width: '100%', alignItems: 'center', paddingTop: 16, paddingBottom: 20 },
+  modalHandle: { width: 48, height: 6, backgroundColor: '#E2E8F0', borderRadius: 3 },
 
-  // Unified modal deal view
-  modalBizHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', marginBottom: 12 },
-  modalBizNameRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 },
-  modalBizIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-  modalBiz: { fontSize: 13, fontWeight: '700', color: '#475569', flex: 1 },
+  // --- ELEVATED DEAL MODAL ---
+  modalHeroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', marginBottom: 12 },
+  modalHeroHeaderLeft: { flex: 1, paddingRight: 16 },
+  modalBiz: { fontSize: 16, fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  sourceBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0F172A', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' },
+  sourceBadgeText: { fontSize: 11, fontWeight: '700', color: '#FFF' },
+  
+  modalSaveCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  
+  modalTitle: { fontSize: 32, fontWeight: '900', color: '#0F172A', textAlign: 'left', marginBottom: 24, letterSpacing: -1, width: '100%', lineHeight: 38 },
 
-  modalBizActionsCol: { alignItems: 'flex-end', gap: 6 },
-  sourceBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, maxWidth: 180 },
-  sourceBadgeText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+  // The "Ticket/Coupon" design
+  couponContainer: { width: '100%', backgroundColor: '#ECFDF5', borderRadius: 20, padding: 2, marginBottom: 24, position: 'relative', overflow: 'hidden' },
+  couponInner: { borderWidth: 2, borderStyle: 'dashed', borderColor: '#34D399', borderRadius: 18, padding: 24 },
+  couponLabel: { fontSize: 12, fontWeight: '800', color: '#059669', letterSpacing: 1.2, marginBottom: 8 },
+  couponText: { fontSize: 20, fontWeight: '800', color: '#064E3B', lineHeight: 28, marginBottom: 16 },
+  couponDivider: { height: 1, backgroundColor: 'rgba(5, 150, 105, 0.2)', marginBottom: 16 },
+  couponFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  couponExpiry: { fontSize: 13, color: '#047857', fontWeight: '600' },
+  
+  // Cutouts for ticket effect
+  ticketCutout: { position: 'absolute', width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF', top: '50%', marginTop: -12 },
+  ticketCutoutLeft: { left: -14 },
+  ticketCutoutRight: { right: -14 },
 
-  inlineSaveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  inlineSaveBtnActive: { backgroundColor: '#ECFDF5' },
-  inlineSaveBtnText: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
+  // Quick Actions (Map, Call, Web)
+  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginBottom: 28, paddingHorizontal: 10 },
+  quickActionItem: { alignItems: 'center', gap: 8 },
+  quickActionDisabled: { opacity: 0.5 },
+  quickActionCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  quickActionText: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
 
-  modalTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A', textAlign: 'left', marginBottom: 16, letterSpacing: -0.5, width: '100%' },
+  addressBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 28 },
+  addressText: { fontSize: 14, color: '#475569', fontWeight: '500', flex: 1 },
 
-  discountDetailCard: { backgroundColor: '#ECFDF5', borderRadius: 20, padding: 20, width: '100%', borderWidth: 1, borderColor: '#D1FAE5', marginBottom: 16 },
-  discountDetailText: { fontSize: 16, fontWeight: '600', color: '#065F46', lineHeight: 24, marginBottom: 8 },
-  discountExpiry: { fontSize: 13, color: '#059669', fontWeight: '500' },
-
-  bizInfoSection: { width: '100%', marginBottom: 14, backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#F1F5F9' },
-  bizInfoSectionTitle: { fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
-  bizInfoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
-  bizInfoText: { fontSize: 14, color: '#475569', flex: 1, lineHeight: 20 },
-
-  directionsActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 14, width: '100%', marginBottom: 14, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 },
-  directionsActionIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-  directionsActionTitle: { fontSize: 15, color: '#0F172A', fontWeight: '600', marginBottom: 2 },
-  directionsActionSub: { fontSize: 12, color: '#64748B' },
-
-  redeemBtn: { backgroundColor: '#059669', paddingVertical: 18, borderRadius: 16, width: '100%', alignItems: 'center', marginBottom: 8, shadowColor: '#059669', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
-  redeemBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  // Huge Redeem CTA
+  redeemBtn: { flexDirection: 'row', backgroundColor: '#059669', paddingVertical: 18, borderRadius: 100, width: '100%', alignItems: 'center', justifyContent: 'center', shadowColor: '#059669', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 4 },
+  redeemBtnText: { color: '#FFF', fontWeight: '800', fontSize: 18, letterSpacing: -0.2 },
+  
   cancelBtn: { paddingVertical: 16, width: '100%', alignItems: 'center' },
-  cancelBtnText: { color: '#64748B', fontWeight: '600', fontSize: 15 },
+  cancelBtnText: { color: '#64748B', fontWeight: '700', fontSize: 16 },
 
-  // Actual Image Card layout
+  // --- UNLOCKED SCREEN ---
   successWrap: { width: '100%', alignItems: 'center', marginTop: 8 },
-  successTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A', marginBottom: 8, letterSpacing: -0.5 },
-  qrLabel: { fontSize: 13, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 20 },
+  successTitle: { fontSize: 26, fontWeight: '900', color: '#0F172A', marginBottom: 8, letterSpacing: -0.5 },
+  qrLabel: { fontSize: 13, color: '#64748B', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 24 },
   
   memberCardWrap: { 
     width: '100%', 
     alignItems: 'center',
-    marginBottom: 24, 
+    marginBottom: 28, 
     shadowColor: '#0F172A', 
-    shadowOffset: { width: 0, height: 8 }, 
+    shadowOffset: { width: 0, height: 12 }, 
     shadowOpacity: 0.15, 
-    shadowRadius: 20, 
+    shadowRadius: 24, 
     elevation: 8,
     borderRadius: 12,
   },
   actualCardImage: { 
     width: '100%', 
     height: 220, 
-    borderRadius: 12, 
+    borderRadius: 16, 
   },
   
-  qrMemberId: { fontSize: 28, fontWeight: '900', color: '#0F172A', letterSpacing: 2, marginBottom: 4 },
-  qrHelperText: { fontSize: 14, color: '#64748B', fontWeight: '500' },
+  qrMemberId: { fontSize: 32, fontWeight: '900', color: '#0F172A', letterSpacing: 2, marginBottom: 4 },
+  qrHelperText: { fontSize: 14, color: '#64748B', fontWeight: '600' },
 });
