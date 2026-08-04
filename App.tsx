@@ -1,3 +1,5 @@
+// --- START OF FILE lokala-prototype/App.tsx ---
+
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -15,12 +17,16 @@ import OnboardingScreen from './src/OnboardingScreen';
 import ScanScreen from './src/ScanScreen';
 import PayScreen from './src/PayScreen';
 import ConfirmationScreen from './src/ConfirmationScreen';
-import EventsScreen from './src/EventScreen';
+import EventsScreen from './src/EventScreen'; // Kept the import so it's ready when you need it
 import type { RootStackParamList } from './src/navigation';
 import { StripeProvider } from '@stripe/stripe-react-native';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// --- FEATURE FLAGS ---
+// Change this to `true` whenever you want the Events tab to reappear.
+const ENABLE_EVENTS_FEATURE = false;
 
 function MainTabNavigator() {
   return (
@@ -54,7 +60,6 @@ function MainTabNavigator() {
           if (route.name === 'Scan') iconName = focused ? 'qr-code' : 'qr-code-outline';
           if (route.name === 'Saved') iconName = focused ? 'bookmark' : 'bookmark-outline';
           if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
-          if (route.name === 'Nearby') iconName = focused ? 'map' : 'map-outline';
           if (route.name === 'Events') iconName = focused ? 'calendar' : 'calendar-outline';
           return <Ionicons name={iconName} size={22} color={color} />;
         },
@@ -62,7 +67,12 @@ function MainTabNavigator() {
     >
       <Tab.Screen name="Deals" component={HomeScreen} />
       <Tab.Screen name="Nearby" component={NearbyScreen} />
-      <Tab.Screen name="Events" component={EventsScreen} />
+      
+      {/* Conditionally render the Events tab based on our feature flag */}
+      {ENABLE_EVENTS_FEATURE && (
+        <Tab.Screen name="Events" component={EventsScreen} />
+      )}
+      
       <Tab.Screen name="Scan" component={ScanScreen} options={{ tabBarLabel: 'Scan' }} />
       <Tab.Screen name="Saved" component={HomeScreen} />
       <Tab.Screen name="Profile" component={AccountScreen} />
@@ -126,8 +136,7 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      {/* Replace with your actual Stripe Publishable Key */}
-      <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY}>
+      <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''}>
         <NavigationContainer>
           <AppContent />
         </NavigationContainer>
