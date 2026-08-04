@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, Platform, Keyboard,
@@ -12,6 +12,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './navigation';
 import { parseQrValue, getBusinessById, getBusinessByPublicCode } from './business';
 
+// A lookup that hasn't answered by now is never going to — cut it loose so the
+// "Looking up business…" spinner can't run forever.
+const LOOKUP_TIMEOUT_MS = 12000;
+
+// Shown for timeouts and transport failures. Raw Supabase errors stay in the logs.
+const CONNECTION_ERROR_TEXT = 'We could not reach Lokala. Check your connection and try again.';
+
 export default function ScanScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [permission, requestPermission] = useCameraPermissions();
@@ -22,61 +29,150 @@ export default function ScanScreen() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(true);
 
+  // The camera fires onBarcodeScanned faster than React can flush state, so the
+  // `scanLocked` state alone can let a second frame through before it applies.
+  // This ref is the race-free guard; `scanLocked` stays purely for rendering.
+  const processingRef = useRef(false);
+  // Latches the "not a Lokala QR" notice so an unrecognised code sitting in the
+  // frame doesn't re-set state on every single frame.
+  const invalidNoticeRef = useRef(false);
+  // Guards against state updates landing after the screen has gone away.
+  const isMountedRef = useRef(true);
+  // A tab screen blurs without unmounting, so `isMountedRef` alone stays true
+  // after a tab switch. This tracks focus so a late lookup can't write state or
+  // push Pay on top of whichever tab the user moved to.
+  const isFocusedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      // Drop any lookup still in flight when the screen unmounts.
+      abortRef.current?.abort();
+    };
+  }, []);
+
   // Only run the camera while this tab is actually focused (avoids the
   // "only one Camera preview can be active" issue mentioned in expo-camera docs).
   useFocusEffect(
     useCallback(() => {
+      isFocusedRef.current = true;
       setIsCameraActive(true);
+      // Coming back to the scanner always clears the guard so the next scan works.
+      processingRef.current = false;
+      invalidNoticeRef.current = false;
       setScanLocked(false);
-      return () => setIsCameraActive(false);
+      // A lookup abandoned at blur leaves this set; clear it so returning to the
+      // tab never shows a spinner for a request that is already gone.
+      setIsLookingUp(false);
+      return () => {
+        isFocusedRef.current = false;
+        // Blur is a real exit for this screen — drop the request rather than
+        // letting it resolve into a tab the user is no longer looking at.
+        abortRef.current?.abort();
+        setIsCameraActive(false);
+      };
     }, [])
   );
 
   const lookupAndGo = async (codeOrId: string) => {
     setIsLookingUp(true);
     setErrorText(null);
-    
-    // Check if it's a legacy UUID (length 36 with dashes) or a new public code
-    let business = null;
-    if (codeOrId.length === 36 && codeOrId.includes('-')) {
-      // Legacy UUID format (from old QR codes)
-      business = await getBusinessById(codeOrId);
-    } else {
-      // New public code format (e.g., "nAOpsGQ5ZqhcNHJL" from URL)
-      business = await getBusinessByPublicCode(codeOrId);
-    }
-    
-    setIsLookingUp(false);
 
-    if (!business) {
-      setErrorText("That code doesn't match a Lokala business. Double check and try again.");
-      setScanLocked(false);
-      return;
-    }
+    // Cancels the Supabase request if it stalls, so the spinner always has an exit.
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, LOOKUP_TIMEOUT_MS);
 
-    navigation.navigate('Pay', { businessId: business.id, businessName: business.name });
+    // Only a completed navigation should leave the scanner locked.
+    let didNavigate = false;
+
+    try {
+      // Check if it's a legacy UUID (length 36 with dashes) or a new public code
+      let business = null;
+      if (codeOrId.length === 36 && codeOrId.includes('-')) {
+        // Legacy UUID format (from old QR codes)
+        business = await getBusinessById(codeOrId, controller.signal);
+      } else {
+        // New public code format (e.g., "nAOpsGQ5ZqhcNHJL" from URL)
+        business = await getBusinessByPublicCode(codeOrId, controller.signal);
+      }
+
+      // Gone or blurred: leave silently. An abort triggered by blur is not a
+      // failure, so it must not surface as not-found or as a timeout.
+      if (!isMountedRef.current || !isFocusedRef.current) return;
+
+      if (!business) {
+        setErrorText(
+          timedOut
+            ? CONNECTION_ERROR_TEXT
+            : "That code doesn't match a Lokala business. Double check and try again."
+        );
+        return;
+      }
+
+      navigation.navigate('Pay', { businessId: business.id, businessName: business.name });
+      didNavigate = true;
+    } catch (e) {
+      // Supabase folds most failures into `error`, but a transport-level throw
+      // would otherwise skip the reset below and hang the spinner for good.
+      console.error('lookupAndGo error', e);
+      if (isMountedRef.current && isFocusedRef.current) setErrorText(CONNECTION_ERROR_TEXT);
+    } finally {
+      clearTimeout(timeoutId);
+      // Only clear the shared handle if this lookup still owns it.
+      if (abortRef.current === controller) abortRef.current = null;
+
+      // While blurred, leave the lock alone — the scanner must not come back to
+      // life behind the user's back. Re-focusing resets all of it anyway.
+      if (isMountedRef.current && isFocusedRef.current) {
+        setIsLookingUp(false);
+        if (!didNavigate) {
+          // Failure, timeout or not-found: let the customer try again immediately.
+          processingRef.current = false;
+          setScanLocked(false);
+        }
+      }
+    }
   };
 
   const handleBarcodeScanned = (result: BarcodeScanningResult) => {
-    if (scanLocked || isLookingUp) return;
-    
+    // Ref check first — it applies synchronously, unlike the state flags.
+    if (processingRef.current) return;
+
     const parsedValue = parseQrValue(result.data);
     if (!parsedValue) {
-      setErrorText("That doesn't look like a Lokala QR code.");
+      // Set once, not once per frame.
+      if (!invalidNoticeRef.current) {
+        invalidNoticeRef.current = true;
+        setErrorText("That doesn't look like a Lokala QR code.");
+      }
       return;
     }
-    
+
+    invalidNoticeRef.current = false;
+    processingRef.current = true;
     setScanLocked(true);
     lookupAndGo(parsedValue);
   };
 
   const handleManualSubmit = () => {
+    if (processingRef.current) return;
+
     const parsedValue = parseQrValue(manualCode);
     if (!parsedValue) {
       setErrorText("Please enter a valid business code.");
       return;
     }
     Keyboard.dismiss();
+    invalidNoticeRef.current = false;
+    processingRef.current = true;
+    setScanLocked(true);
     lookupAndGo(parsedValue);
   };
 
@@ -136,7 +232,9 @@ export default function ScanScreen() {
           style={StyleSheet.absoluteFill}
           facing="back"
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={handleBarcodeScanned}
+          // Detaching the handler while a lookup runs stops the native side from
+          // delivering frames at all — the ref guard is the backstop.
+          onBarcodeScanned={scanLocked ? undefined : handleBarcodeScanned}
         />
       )}
 
