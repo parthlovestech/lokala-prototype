@@ -87,10 +87,15 @@ export function parseQrValue(raw: string): string | null {
  * Look up a business by its public code (from the QR code URL).
  * Uses the Supabase RPC function that returns business details.
  */
-export async function getBusinessByPublicCode(publicCode: string): Promise<{ id: string, name: string } | null> {
-  const { data, error } = await supabase.rpc('get_business_for_qr_code', {
+export async function getBusinessByPublicCode(publicCode: string, signal?: AbortSignal): Promise<{ id: string, name: string } | null> {
+  let query = supabase.rpc('get_business_for_qr_code', {
     input_public_code: publicCode,
   });
+
+  // Lets the caller cancel a stalled lookup instead of waiting forever.
+  if (signal) query = query.abortSignal(signal);
+
+  const { data, error } = await query;
 
   if (error || !data) {
     console.error('getBusinessByPublicCode error:', error);
@@ -140,12 +145,16 @@ export async function createBusiness(ownerId: string, name: string): Promise<{ b
 }
 
 /** Looks up a business by id — used after a customer scans (or manually enters) a QR code. */
-export async function getBusinessById(id: string): Promise<Business | null> {
-  const { data, error } = await supabase
+export async function getBusinessById(id: string, signal?: AbortSignal): Promise<Business | null> {
+  let query = supabase
     .from('businesses')
     .select('*')
-    .eq('id', id)
-    .maybeSingle();
+    .eq('id', id);
+
+  // Lets the caller cancel a stalled lookup instead of waiting forever.
+  if (signal) query = query.abortSignal(signal);
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     console.error('getBusinessById error', error);
