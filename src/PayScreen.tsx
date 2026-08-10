@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStripe } from '@stripe/stripe-react-native';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
@@ -11,14 +11,18 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './navigation';
 import { useAuth } from './AuthContext';
 import { createMerchantQrPayment, getAccessToken, PaymentApiError } from './payments/client';
-import type { PaymentSession } from './payments/types';
+import type { PaymentReceipt, PaymentSession } from './payments/types';
+import { isFailureStatus } from './payments/types';
 import {
   attemptMatchesInputs,
+  clearActiveAttempt,
+  loadActiveAttempt,
   newAttempt,
   patchAttempt,
   saveAttempt,
   type PaymentAttempt,
 } from './payments/attemptStore';
+import { pollPaymentReceipt } from './payments/pollReceipt';
 import { formatCents, parseAmountToCents } from './payments/money';
 
 const TIP_PERCENTS = [15, 20, 25];
@@ -27,9 +31,9 @@ const TIP_PERCENTS = [15, 20, 25];
  * The screen's lifecycle. `input` collects the amount; `working` covers creating
  * the durable payment and presenting Stripe's sheet; `processing` is reached once
  * the sheet reports success and means "the charge is in flight — the SERVER now
- * decides the outcome, not this device."
+ * decides the outcome, not this device"; `failed` is a confirmed terminal failure.
  */
-type Phase = 'input' | 'working' | 'processing';
+type Phase = 'input' | 'working' | 'processing' | 'failed';
 
 export default function PayScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -46,6 +50,13 @@ export default function PayScreen() {
   const [error, setError] = useState<string | null>(null);
   // The authoritative, server-calculated breakdown. Null until POST succeeds.
   const [session, setSession] = useState<PaymentSession | null>(null);
+  // The canonical receipt once status polling has an answer.
+  const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
+  // True once polling exhausted its window without a terminal status. The charge
+  // may still be settling, so we stay on "Payment processing" and offer a manual
+  // re-check of the SAME payment — never a new charge.
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
 
   // Synchronous lock around payment creation. A ref (not state) so a second tap
   // in the same tick is rejected before React can re-render — the guard against
@@ -58,6 +69,10 @@ export default function PayScreen() {
   // The durable attempt. Held in a ref so it survives rerenders and every retry
   // reuses the SAME clientRequestId.
   const attemptRef = useRef<PaymentAttempt | null>(null);
+  // Guards against navigation/state updates after the screen has gone away.
+  const isMountedRef = useRef(true);
+  // The current polling session, aborted on unmount or when a new check starts.
+  const pollAbortRef = useRef<AbortController | null>(null);
 
   const subtotalCents = useMemo(() => parseAmountToCents(amountText) ?? 0, [amountText]);
 
@@ -99,6 +114,123 @@ export default function PayScreen() {
       setError('Something went wrong. Please try again.');
     }
   };
+
+  /**
+   * A confirmed terminal status. Success routes to the canonical receipt screen;
+   * a failure/cancel surfaces a safe failure state. Either way the durable attempt
+   * is cleared, because the payment is over.
+   */
+  const handleTerminal = async (settled: PaymentReceipt) => {
+    await clearActiveAttempt();
+    if (!isMountedRef.current) return;
+    if (settled.status === 'succeeded') {
+      navigation.replace('Confirmation', { receipt: settled });
+      return;
+    }
+    if (isFailureStatus(settled.status)) {
+      setReceipt(settled);
+      setPhase('failed');
+    }
+  };
+
+  /**
+   * Resolve a payment by reading its canonical status — never by charging. Used
+   * after PaymentSheet success, on a "Check status" tap, and on app resume. It
+   * checks the SAME paymentId every time, so it can never create a second charge.
+   */
+  const startStatusResolution = async (paymentId: string) => {
+    setPhase('processing');
+    setPollTimedOut(false);
+    setError(null);
+    setIsChecking(true);
+
+    pollAbortRef.current?.abort();
+    const controller = new AbortController();
+    pollAbortRef.current = controller;
+
+    const accessToken = await getAccessToken();
+
+    try {
+      const result = await pollPaymentReceipt(paymentId, {
+        accessToken,
+        signal: controller.signal,
+        onUpdate: (r) => {
+          if (isMountedRef.current) setReceipt(r);
+        },
+      });
+      if (!isMountedRef.current) return;
+      if (result.outcome === 'terminal') {
+        await handleTerminal(result.receipt);
+      } else if (result.outcome === 'timeout') {
+        // Still in flight after the window. Never offer a re-charge — only a
+        // re-check of this same payment.
+        if (result.lastReceipt) setReceipt(result.lastReceipt);
+        setPollTimedOut(true);
+      }
+      // 'aborted' → the screen went away; leave state untouched.
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      if (err instanceof PaymentApiError && err.isAuthError) {
+        setError('Please sign in again to check this payment.');
+      }
+      // A charge may already have happened, so we stay on processing and let the
+      // customer re-check — we never fall back to allowing another charge.
+      setPollTimedOut(true);
+    } finally {
+      if (isMountedRef.current) setIsChecking(false);
+    }
+  };
+
+  /** Manual re-check of the existing payment. Checks status, never charges. */
+  const handleCheckStatus = () => {
+    const paymentId = attemptRef.current?.paymentId;
+    if (!paymentId || isChecking) return;
+    void startStatusResolution(paymentId);
+  };
+
+  /**
+   * Start a genuinely NEW attempt after a confirmed terminal failure. Clears the
+   * old attempt and every guard so the next confirm generates a fresh
+   * clientRequestId.
+   */
+  const handleStartNewPayment = async () => {
+    await clearActiveAttempt();
+    attemptRef.current = null;
+    sheetCompletedRef.current = false;
+    creatingLockRef.current = false;
+    setSession(null);
+    setReceipt(null);
+    setPollTimedOut(false);
+    setError(null);
+    setPhase('input');
+  };
+
+  // Recover an interrupted payment. If a stored attempt has already reached
+  // PaymentSheet success, a charge is in flight: resume by CHECKING its status,
+  // never by charging again. A pre-charge attempt is kept only so re-entering the
+  // same amount reuses its clientRequestId.
+  useEffect(() => {
+    isMountedRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      const active = await loadActiveAttempt();
+      if (cancelled || !active) return;
+      attemptRef.current = active;
+      if (active.paymentId && active.sheetCompleted) {
+        sheetCompletedRef.current = true;
+        creatingLockRef.current = true;
+        void startStatusResolution(active.paymentId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      isMountedRef.current = false;
+      pollAbortRef.current?.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleConfirm = async () => {
     // Ref checks first — they apply synchronously, unlike state.
@@ -148,7 +280,7 @@ export default function PayScreen() {
       if (!created.clientSecret) {
         sheetCompletedRef.current = true;
         attemptRef.current = await patchAttempt(attemptRef.current, { sheetCompleted: true });
-        setPhase('processing');
+        void startStatusResolution(created.paymentId);
         return;
       }
 
@@ -184,7 +316,7 @@ export default function PayScreen() {
       // hand off to the processing phase.
       sheetCompletedRef.current = true;
       attemptRef.current = await patchAttempt(attemptRef.current, { sheetCompleted: true });
-      setPhase('processing');
+      void startStatusResolution(created.paymentId);
     } catch (err) {
       // Reaches here only from the create call (or an unexpected throw). A 409
       // (mismatch / already-settled / closed) must NOT silently spawn a new
@@ -196,7 +328,12 @@ export default function PayScreen() {
     }
   };
 
-  const renderServerSummary = (s: PaymentSession) => (
+  const renderServerSummary = (s: {
+    subtotalCents: number;
+    tipCents: number;
+    customerFeeCents: number;
+    totalCents: number;
+  }) => (
     <View style={styles.summaryCard}>
       <View style={styles.summaryRow}>
         <Text style={styles.summaryLabel}>Subtotal</Text>
@@ -218,16 +355,63 @@ export default function PayScreen() {
     </View>
   );
 
+  const summarySource = receipt ?? session;
+
   if (phase === 'processing') {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.processingContent}>
-          <ActivityIndicator size="large" color="#059669" />
+          {!pollTimedOut && <ActivityIndicator size="large" color="#059669" />}
+          {pollTimedOut && (
+            <Ionicons name="time-outline" size={56} color="#059669" />
+          )}
           <Text style={styles.processingTitle}>Payment processing</Text>
           <Text style={styles.processingBody}>
-            We're confirming your payment. This can take a moment.
+            {pollTimedOut
+              ? "Your payment is still being confirmed. You haven't been charged twice — you can check again in a moment."
+              : "We're confirming your payment. This can take a moment."}
           </Text>
-          {session && renderServerSummary(session)}
+          {summarySource && renderServerSummary(summarySource)}
+          {error && <Text style={styles.errorText}>{error}</Text>}
+          {pollTimedOut && (
+            <TouchableOpacity
+              style={[styles.secondaryBtn, isChecking && styles.confirmBtnDisabled]}
+              onPress={handleCheckStatus}
+              disabled={isChecking}
+              activeOpacity={0.85}
+            >
+              {isChecking
+                ? <ActivityIndicator color="#059669" />
+                : <Text style={styles.secondaryBtnText}>Check status</Text>}
+            </TouchableOpacity>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (phase === 'failed') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.processingContent}>
+          <View style={styles.failCircle}>
+            <Ionicons name="close" size={48} color="#fff" />
+          </View>
+          <Text style={styles.processingTitle}>Payment not completed</Text>
+          <Text style={styles.processingBody}>
+            {receipt?.status === 'canceled'
+              ? 'This payment was canceled. You were not charged.'
+              : 'This payment did not go through. You were not charged.'}
+          </Text>
+          <View style={styles.footerInline}>
+            <TouchableOpacity
+              style={styles.confirmBtn}
+              onPress={handleStartNewPayment}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.confirmBtnText}>Start New Payment</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -416,4 +600,17 @@ const styles = StyleSheet.create({
   processingContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   processingTitle: { fontSize: 20, fontWeight: '800', color: '#111', marginTop: 20 },
   processingBody: { fontSize: 14, color: '#64748B', marginTop: 8, textAlign: 'center', lineHeight: 20 },
+
+  failCircle: {
+    width: 96, height: 96, borderRadius: 48, backgroundColor: '#DC2626',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  secondaryBtn: {
+    marginTop: 24, borderRadius: 14, paddingVertical: 15, paddingHorizontal: 40,
+    borderWidth: 1.5, borderColor: '#059669', alignItems: 'center', minWidth: 220,
+  },
+  secondaryBtnText: { color: '#059669', fontWeight: '700', fontSize: 16 },
+
+  footerInline: { marginTop: 28, width: '100%' },
 });

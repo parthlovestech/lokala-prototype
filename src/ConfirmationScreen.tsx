@@ -5,11 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './navigation';
+import { formatCents } from './payments/money';
 
 export default function ConfirmationScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'Confirmation'>>();
-  const { businessName, subtotal, tipPercent, tipAmount, total } = route.params;
+  // Everything shown here comes from the server-confirmed receipt — no locally
+  // calculated totals, and no internal identifiers are present in this shape.
+  const { receipt } = route.params;
 
   const scale = useRef(new Animated.Value(0.6)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -21,7 +24,8 @@ export default function ConfirmationScreen() {
     ]).start();
   }, []);
 
-  const timestamp = new Date().toLocaleString(undefined, {
+  const settledAt = receipt.succeededAt ?? receipt.createdAt;
+  const timestamp = new Date(settledAt).toLocaleString(undefined, {
     hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric',
   });
 
@@ -38,22 +42,26 @@ export default function ConfirmationScreen() {
           <Ionicons name="checkmark" size={56} color="#fff" />
         </Animated.View>
 
-        <Text style={styles.title}>Show this to staff</Text>
-        <Text style={styles.subtitle}>{businessName}</Text>
+        <Text style={styles.title}>Payment complete</Text>
+        <Text style={styles.subtitle}>{receipt.businessName ?? 'Local business'}</Text>
 
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Subtotal</Text>
-            <Text style={styles.rowValue}>${subtotal.toFixed(2)}</Text>
+            <Text style={styles.rowValue}>{formatCents(receipt.subtotalCents)}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Tip{tipPercent !== null ? ` (${tipPercent}%)` : ''}</Text>
-            <Text style={styles.rowValue}>${tipAmount.toFixed(2)}</Text>
+            <Text style={styles.rowLabel}>Tip</Text>
+            <Text style={styles.rowValue}>{formatCents(receipt.tipCents)}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Lokala fee</Text>
+            <Text style={styles.rowValue}>{formatCents(receipt.customerFeeCents)}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.row}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+            <Text style={styles.totalValue}>{formatCents(receipt.totalCents)}</Text>
           </View>
         </View>
 

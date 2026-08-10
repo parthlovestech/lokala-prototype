@@ -1,3 +1,5 @@
+import type { PaymentReceipt } from './payments/types';
+
 export type RootStackParamList = {
   MainApp: undefined;
   Auth: undefined;
@@ -7,10 +9,7 @@ export type RootStackParamList = {
     businessName: string;
   };
   Confirmation: {
-    businessName: string;
-    subtotal: number;
-    tipPercent: number | null;
-    tipAmount: number;
-    total: number;
+    /** The canonical, server-confirmed receipt. Every amount comes from here. */
+    receipt: PaymentReceipt;
   };
 };
