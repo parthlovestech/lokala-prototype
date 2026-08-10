@@ -116,7 +116,10 @@ export default function ScanScreen() {
         return;
       }
 
-      navigation.navigate('Pay', { businessId: business.id, businessName: business.name });
+      // Forward the SCANNED public code itself — never a resolved/owner id. The
+      // payment API resolves the merchant from this code server-side; the lookup
+      // above is only used to confirm the business exists and to show its name.
+      navigation.navigate('Pay', { publicCode: codeOrId, businessName: business.name });
       didNavigate = true;
     } catch (e) {
       // Supabase folds most failures into `error`, but a transport-level throw

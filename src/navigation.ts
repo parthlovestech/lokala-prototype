@@ -1,7 +1,11 @@
 export type RootStackParamList = {
   MainApp: undefined;
   Auth: undefined;
-  Pay: { businessId: string; businessName: string };
+  Pay: {
+    /** The scanned QR public code. Sent to POST /api/payments as qrPublicCode. */
+    publicCode: string;
+    businessName: string;
+  };
   Confirmation: {
     businessName: string;
     subtotal: number;

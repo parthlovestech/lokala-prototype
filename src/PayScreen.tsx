@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useStripe } from '@stripe/stripe-react-native';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
@@ -10,24 +10,31 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './navigation';
 import { useAuth } from './AuthContext';
-import { recordTip } from './business';
+import { createMerchantQrPayment, getAccessToken, PaymentApiError } from './payments/client';
+import type { PaymentSession } from './payments/types';
+import {
+  attemptMatchesInputs,
+  newAttempt,
+  patchAttempt,
+  saveAttempt,
+  type PaymentAttempt,
+} from './payments/attemptStore';
+import { formatCents, parseAmountToCents } from './payments/money';
 
 const TIP_PERCENTS = [15, 20, 25];
 
-// Replace this with your actual computer's local IP address when testing on a physical device
-// For iOS simulator or Android emulator, 'http://localhost:3000' works
-// For physical device, use your computer's IP address (e.g., 'http://192.168.1.10:3000')
-// Replace this with your actual computer's local IP address when testing locally,
-// OR use your production domain. We fallback to the live production server.
-const API_URL = process.env.EXPO_PUBLIC_API_URL 
-  ? `${process.env.EXPO_PUBLIC_API_URL}/api/stripe/payment-intent`
-  : 'https://www.mylokala.com/api/stripe/payment-intent';
-
+/**
+ * The screen's lifecycle. `input` collects the amount; `working` covers creating
+ * the durable payment and presenting Stripe's sheet; `processing` is reached once
+ * the sheet reports success and means "the charge is in flight — the SERVER now
+ * decides the outcome, not this device."
+ */
+type Phase = 'input' | 'working' | 'processing';
 
 export default function PayScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'Pay'>>();
-  const { businessId, businessName } = route.params;
+  const { publicCode, businessName } = route.params;
   const { user } = useAuth();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
@@ -35,25 +42,33 @@ export default function PayScreen() {
   const [selectedPercent, setSelectedPercent] = useState<number | null>(20);
   const [isCustom, setIsCustom] = useState(false);
   const [customTipText, setCustomTipText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<Phase>('input');
   const [error, setError] = useState<string | null>(null);
+  // The authoritative, server-calculated breakdown. Null until POST succeeds.
+  const [session, setSession] = useState<PaymentSession | null>(null);
 
-  const subtotal = useMemo(() => {
-    const n = parseFloat(amountText);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }, [amountText]);
+  // Synchronous lock around payment creation. A ref (not state) so a second tap
+  // in the same tick is rejected before React can re-render — the guard against
+  // creating two PaymentIntents.
+  const creatingLockRef = useRef(false);
+  // Latched once Stripe's PaymentSheet reports success. From then on this screen
+  // may NEVER create another intent; anything that fails afterwards is a status
+  // question about an existing charge, never a reason to charge again.
+  const sheetCompletedRef = useRef(false);
+  // The durable attempt. Held in a ref so it survives rerenders and every retry
+  // reuses the SAME clientRequestId.
+  const attemptRef = useRef<PaymentAttempt | null>(null);
 
-  const tipAmount = useMemo(() => {
-    if (isCustom) {
-      const n = parseFloat(customTipText);
-      return Number.isFinite(n) && n >= 0 ? n : 0;
-    }
+  const subtotalCents = useMemo(() => parseAmountToCents(amountText) ?? 0, [amountText]);
+
+  const tipCents = useMemo(() => {
+    if (isCustom) return parseAmountToCents(customTipText) ?? 0;
     if (selectedPercent === null) return 0;
-    return Math.round(subtotal * (selectedPercent / 100) * 100) / 100;
-  }, [isCustom, customTipText, selectedPercent, subtotal]);
+    return Math.round((subtotalCents * selectedPercent) / 100);
+  }, [isCustom, customTipText, selectedPercent, subtotalCents]);
 
-  const total = Math.round((subtotal + tipAmount) * 100) / 100;
-  const canConfirm = subtotal > 0 && !isSubmitting;
+  const localPreviewCents = subtotalCents + tipCents;
+  const canConfirm = subtotalCents > 0 && phase === 'input';
 
   const selectPercent = (p: number) => {
     setIsCustom(false);
@@ -65,89 +80,158 @@ export default function PayScreen() {
     setSelectedPercent(null);
   };
 
-  const handleConfirm = async () => {
-    if (!user || !canConfirm) return;
-    setIsSubmitting(true);
-    setError(null);
+  /** Reuse the in-flight attempt if it is for these exact inputs, else start one. */
+  const ensureAttempt = async (): Promise<PaymentAttempt> => {
+    const inputs = { publicCode, businessName, subtotalCents, tipCents };
+    const current = attemptRef.current;
+    if (current && attemptMatchesInputs(current, inputs)) {
+      return current;
+    }
+    const fresh = await saveAttempt(newAttempt(inputs));
+    attemptRef.current = fresh;
+    return fresh;
+  };
 
-    try {
-      console.log("1. Contacting web backend at:", API_URL);
-      
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: total,
-          businessId: businessId,
-        }),
-      });
-
-      console.log("2. Backend responded with status:", response.status);
-      
-      // Read as text first to catch HTML errors (like 404s or 500s) instead of crashing
-      const text = await response.text(); 
-      console.log("3. Backend response body:", text);
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error("Server returned an invalid response. Check your web app terminal for errors.");
-      }
-
-      if (!response.ok || !data.clientSecret) {
-        throw new Error(data.error || 'Failed to initialize payment on the server.');
-      }
-
-      console.log("4. Initializing Stripe Payment Sheet...");
-      const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: businessName,
-        paymentIntentClientSecret: data.clientSecret,
-        allowsDelayedPaymentMethods: true,
-      });
-
-      if (initError) throw new Error(`Stripe Init Error: ${initError.message}`);
-
-      console.log("5. Presenting Stripe Payment Sheet to user...");
-      const { error: presentError } = await presentPaymentSheet();
-
-      if (presentError) {
-        throw new Error(presentError.message);
-      }
-
-      console.log("6. Payment Success! Saving receipt to Supabase...");
-      const { tip, error: submitError } = await recordTip({
-        userId: user.id,
-        businessId,
-        businessName,
-        subtotal,
-        tipPercent: isCustom ? null : selectedPercent,
-        tipAmount,
-        total,
-      });
-
-      if (submitError || !tip) {
-        throw new Error(submitError ?? 'Something went wrong saving the receipt.');
-      }
-
-      console.log("7. Routing to confirmation screen...");
-      navigation.replace('Confirmation', {
-        businessName,
-        subtotal,
-        tipPercent: isCustom ? null : selectedPercent,
-        tipAmount,
-        total,
-      });
-
-    } catch (err: any) {
-      console.error("Payment Flow Error:", err.message);
-      if (err.message !== 'The payment has been canceled' && err.message !== 'Canceled') {
-        setError(err.message);
-      }
-    } finally {
-      setIsSubmitting(false);
+  const applyError = (err: unknown) => {
+    if (err instanceof PaymentApiError) {
+      setError(err.message);
+    } else {
+      setError('Something went wrong. Please try again.');
     }
   };
+
+  const handleConfirm = async () => {
+    // Ref checks first — they apply synchronously, unlike state.
+    if (creatingLockRef.current || sheetCompletedRef.current) return;
+    creatingLockRef.current = true;
+    setError(null);
+
+    // Authentication is required to attribute the payment to a customer.
+    const accessToken = await getAccessToken();
+    if (!user || !accessToken) {
+      setError('Please sign in to make a payment.');
+      creatingLockRef.current = false;
+      return;
+    }
+
+    if (subtotalCents < 1) {
+      setError('Please enter a valid amount.');
+      creatingLockRef.current = false;
+      return;
+    }
+
+    setPhase('working');
+
+    try {
+      const attempt = await ensureAttempt();
+
+      // Idempotent on clientRequestId: a retry after a failure returns the SAME
+      // session and can never create a second PaymentIntent.
+      const created = await createMerchantQrPayment(
+        {
+          clientRequestId: attempt.clientRequestId,
+          qrPublicCode: publicCode,
+          subtotalCents,
+          tipCents,
+        },
+        { accessToken },
+      );
+
+      // Record the paymentId the instant we have it, so a crash from here on
+      // resumes by CHECKING this payment rather than starting a new one.
+      attemptRef.current = await patchAttempt(attempt, { paymentId: created.paymentId });
+      setSession(created);
+
+      // No client secret means the payment is already terminal on the server
+      // (e.g. an idempotent replay of a settled attempt). There is nothing to
+      // present — move to processing and let the status check resolve it.
+      if (!created.clientSecret) {
+        sheetCompletedRef.current = true;
+        attemptRef.current = await patchAttempt(attemptRef.current, { sheetCompleted: true });
+        setPhase('processing');
+        return;
+      }
+
+      const initResult = await initPaymentSheet({
+        merchantDisplayName: created.businessName ?? businessName,
+        paymentIntentClientSecret: created.clientSecret,
+        allowsDelayedPaymentMethods: true,
+      });
+      if (initResult.error) {
+        // Init failure is pre-charge and safe to retry with the same id.
+        setError(initResult.error.message);
+        setPhase('input');
+        creatingLockRef.current = false;
+        return;
+      }
+
+      const presentResult = await presentPaymentSheet();
+      if (presentResult.error) {
+        // Cancel/close is not an error the customer needs to see; any other
+        // present error is still pre-charge and retryable with the same id.
+        const code = String(presentResult.error.code);
+        if (code !== 'Canceled') {
+          setError(presentResult.error.message);
+        }
+        setPhase('input');
+        creatingLockRef.current = false;
+        return;
+      }
+
+      // PaymentSheet reported success. This is NOT canonical success — the ledger
+      // is advanced by Stripe's webhook, confirmed via the status check. We latch
+      // the guard so no further intent can ever be created for this attempt, and
+      // hand off to the processing phase.
+      sheetCompletedRef.current = true;
+      attemptRef.current = await patchAttempt(attemptRef.current, { sheetCompleted: true });
+      setPhase('processing');
+    } catch (err) {
+      // Reaches here only from the create call (or an unexpected throw). A 409
+      // (mismatch / already-settled / closed) must NOT silently spawn a new
+      // attempt: we surface the safe message and stop. The user may change the
+      // amount — which is an explicit new attempt with a new id — to try again.
+      applyError(err);
+      setPhase('input');
+      creatingLockRef.current = false;
+    }
+  };
+
+  const renderServerSummary = (s: PaymentSession) => (
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Subtotal</Text>
+        <Text style={styles.summaryValue}>{formatCents(s.subtotalCents)}</Text>
+      </View>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Tip</Text>
+        <Text style={styles.summaryValue}>{formatCents(s.tipCents)}</Text>
+      </View>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Lokala fee</Text>
+        <Text style={styles.summaryValue}>{formatCents(s.customerFeeCents)}</Text>
+      </View>
+      <View style={styles.summaryDivider} />
+      <View style={styles.summaryRow}>
+        <Text style={styles.totalLabel}>Total</Text>
+        <Text style={styles.totalValue}>{formatCents(s.totalCents)}</Text>
+      </View>
+    </View>
+  );
+
+  if (phase === 'processing') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.processingContent}>
+          <ActivityIndicator size="large" color="#059669" />
+          <Text style={styles.processingTitle}>Payment processing</Text>
+          <Text style={styles.processingBody}>
+            We're confirming your payment. This can take a moment.
+          </Text>
+          {session && renderServerSummary(session)}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -156,10 +240,10 @@ export default function PayScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10}>
+          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10} disabled={phase === 'working'}>
             <Ionicons name="chevron-back" size={26} color="#111" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Log Your Visit</Text>
+          <Text style={styles.headerTitle}>Pay</Text>
           <View style={{ width: 26 }} />
         </View>
 
@@ -181,6 +265,7 @@ export default function PayScreen() {
               keyboardType="decimal-pad"
               value={amountText}
               onChangeText={setAmountText}
+              editable={phase === 'input'}
               autoFocus
             />
           </View>
@@ -192,6 +277,7 @@ export default function PayScreen() {
                 key={p}
                 style={[styles.tipChip, !isCustom && selectedPercent === p && styles.tipChipActive]}
                 onPress={() => selectPercent(p)}
+                disabled={phase !== 'input'}
                 activeOpacity={0.85}
               >
                 <Text style={[styles.tipChipText, !isCustom && selectedPercent === p && styles.tipChipTextActive]}>
@@ -202,6 +288,7 @@ export default function PayScreen() {
             <TouchableOpacity
               style={[styles.tipChip, isCustom && styles.tipChipActive]}
               onPress={selectCustom}
+              disabled={phase !== 'input'}
               activeOpacity={0.85}
             >
               <Text style={[styles.tipChipText, isCustom && styles.tipChipTextActive]}>Custom</Text>
@@ -218,28 +305,34 @@ export default function PayScreen() {
                 keyboardType="decimal-pad"
                 value={customTipText}
                 onChangeText={setCustomTipText}
+                editable={phase === 'input'}
                 autoFocus
               />
             </View>
           )}
 
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+          {session ? (
+            renderServerSummary(session)
+          ) : (
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>{formatCents(subtotalCents)}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>
+                  Tip{!isCustom && selectedPercent !== null ? ` (${selectedPercent}%)` : ''}
+                </Text>
+                <Text style={styles.summaryValue}>{formatCents(tipCents)}</Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.totalLabel}>Subtotal + tip</Text>
+                <Text style={styles.totalValue}>{formatCents(localPreviewCents)}</Text>
+              </View>
+              <Text style={styles.feeNote}>A small Lokala fee is calculated at checkout.</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>
-                Tip{!isCustom && selectedPercent !== null ? ` (${selectedPercent}%)` : ''}
-              </Text>
-              <Text style={styles.summaryValue}>${tipAmount.toFixed(2)}</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
-            </View>
-          </View>
+          )}
 
           {error && <Text style={styles.errorText}>{error}</Text>}
         </ScrollView>
@@ -251,9 +344,9 @@ export default function PayScreen() {
             disabled={!canConfirm}
             activeOpacity={0.85}
           >
-            {isSubmitting
+            {phase === 'working'
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.confirmBtnText}>Confirm ${total.toFixed(2)}</Text>}
+              : <Text style={styles.confirmBtnText}>Continue to Payment</Text>}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -309,6 +402,7 @@ const styles = StyleSheet.create({
   summaryDivider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 8 },
   totalLabel: { fontSize: 16, fontWeight: '700', color: '#111' },
   totalValue: { fontSize: 18, fontWeight: '800', color: '#059669' },
+  feeNote: { fontSize: 12, color: '#94A3B8', marginTop: 10 },
 
   errorText: { color: '#DC2626', fontSize: 13, fontWeight: '500', marginTop: 16, textAlign: 'center' },
 
@@ -318,4 +412,8 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { backgroundColor: '#A7D8C4' },
   confirmBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  processingContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  processingTitle: { fontSize: 20, fontWeight: '800', color: '#111', marginTop: 20 },
+  processingBody: { fontSize: 14, color: '#64748B', marginTop: 8, textAlign: 'center', lineHeight: 20 },
 });
