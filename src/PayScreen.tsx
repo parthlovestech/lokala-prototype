@@ -495,28 +495,27 @@ export default function PayScreen() {
             </View>
           )}
 
-          {session ? (
-            renderServerSummary(session)
-          ) : (
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>{formatCents(subtotalCents)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Tip{!isCustom && selectedPercent !== null ? ` (${selectedPercent}%)` : ''}
-                </Text>
-                <Text style={styles.summaryValue}>{formatCents(tipCents)}</Text>
-              </View>
-              <View style={styles.summaryDivider} />
-              <View style={styles.summaryRow}>
-                <Text style={styles.totalLabel}>Subtotal + tip</Text>
-                <Text style={styles.totalValue}>{formatCents(localPreviewCents)}</Text>
-              </View>
-              <Text style={styles.feeNote}>A small Lokala fee is calculated at checkout.</Text>
+          {/* Input phase always shows a fresh local preview; the authoritative,
+              server-calculated breakdown appears in the processing and
+              confirmation screens (and in Stripe's own sheet at checkout). */}
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Subtotal</Text>
+              <Text style={styles.summaryValue}>{formatCents(subtotalCents)}</Text>
             </View>
-          )}
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>
+                Tip{!isCustom && selectedPercent !== null ? ` (${selectedPercent}%)` : ''}
+              </Text>
+              <Text style={styles.summaryValue}>{formatCents(tipCents)}</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryRow}>
+              <Text style={styles.totalLabel}>Subtotal + tip</Text>
+              <Text style={styles.totalValue}>{formatCents(localPreviewCents)}</Text>
+            </View>
+            <Text style={styles.feeNote}>A small Lokala fee is calculated at checkout.</Text>
+          </View>
 
           {error && <Text style={styles.errorText}>{error}</Text>}
         </ScrollView>
