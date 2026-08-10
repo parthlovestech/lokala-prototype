@@ -1,12 +1,15 @@
+import type { PaymentReceipt } from './payments/types';
+
 export type RootStackParamList = {
   MainApp: undefined;
   Auth: undefined;
-  Pay: { businessId: string; businessName: string };
-  Confirmation: {
+  Pay: {
+    /** The scanned QR public code. Sent to POST /api/payments as qrPublicCode. */
+    publicCode: string;
     businessName: string;
-    subtotal: number;
-    tipPercent: number | null;
-    tipAmount: number;
-    total: number;
+  };
+  Confirmation: {
+    /** The canonical, server-confirmed receipt. Every amount comes from here. */
+    receipt: PaymentReceipt;
   };
 };

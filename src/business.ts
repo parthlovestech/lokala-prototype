@@ -87,7 +87,7 @@ export function parseQrValue(raw: string): string | null {
  * Look up a business by its public code (from the QR code URL).
  * Uses the Supabase RPC function that returns business details.
  */
-export async function getBusinessByPublicCode(publicCode: string, signal?: AbortSignal): Promise<{ id: string, name: string } | null> {
+export async function getBusinessByPublicCode(publicCode: string, signal?: AbortSignal): Promise<{ name: string } | null> {
   let query = supabase.rpc('get_business_for_qr_code', {
     input_public_code: publicCode,
   });
@@ -103,17 +103,16 @@ export async function getBusinessByPublicCode(publicCode: string, signal?: Abort
   }
 
   const row = Array.isArray(data) ? data[0] : data;
-  
+
   // If the RPC returned nothing valid
   if (!row || (!row.public_code && !row.business_name)) return null;
 
-  // The RPC intentionally hides internal IDs for security. 
-  // We pass the publicCode forward as the ID, and the payment API handles resolving it.
-  const resolvedId = row.business_owner_id || row.owner_id || row.business_id || row.id || publicCode;
-
+  // Display information only. The merchant is resolved server-side from the
+  // scanned public code by the payment API — the mobile app never derives, holds,
+  // or forwards an internal business/owner id (doing so is what previously fed a
+  // non-uuid into a uuid column).
   return {
-    id: resolvedId,
-    name: row.business_name || 'Lokala Business'
+    name: row.business_name || 'Lokala Business',
   };
 }
 
@@ -163,37 +162,12 @@ export async function getBusinessById(id: string, signal?: AbortSignal): Promise
   return data ? mapBusiness(data) : null;
 }
 
-interface RecordTipInput {
-  userId: string;
-  businessId: string;
-  businessName: string;
-  subtotal: number;
-  tipPercent: number | null; // null when a custom dollar amount was used
-  tipAmount: number;
-  total: number;
-}
+// NOTE: The mobile app no longer writes any payment/tip/financial record. All
+// money movement and its ledger are owned by the web backend via POST
+// /api/payments and the Stripe webhook. The read helper below only powers the
+// merchant dashboard's historical display and performs no writes.
 
-/** Logs a customer's self-reported amount + tip against a business. No money actually moves. */
-export async function recordTip(input: RecordTipInput): Promise<{ tip: TipRecord | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from('tips')
-    .insert({
-      user_id: input.userId,
-      business_id: input.businessId,
-      business_name: input.businessName,
-      subtotal: input.subtotal,
-      tip_percent: input.tipPercent,
-      tip_amount: input.tipAmount,
-      total: input.total,
-    })
-    .select('*')
-    .single();
-
-  if (error) return { tip: null, error: error.message };
-  return { tip: mapTip(data), error: null };
-}
-
-/** All tips logged against a given business — used for the business owner's dashboard. */
+/** All tips logged against a given business — read-only, used for the business owner's dashboard. */
 export async function getTipsForBusiness(businessId: string): Promise<TipRecord[]> {
   const { data, error } = await supabase
     .from('tips')
@@ -203,22 +177,6 @@ export async function getTipsForBusiness(businessId: string): Promise<TipRecord[
 
   if (error) {
     console.error('getTipsForBusiness error', error);
-    return [];
-  }
-  return (data ?? []).map(mapTip);
-}
-
-/** A customer's own history of logged visits. */
-export async function getMyTips(userId: string): Promise<TipRecord[]> {
-  const { data, error } = await supabase
-    .from('tips')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(20);
-
-  if (error) {
-    console.error('getMyTips error', error);
     return [];
   }
   return (data ?? []).map(mapTip);
