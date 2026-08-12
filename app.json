@@ -13,6 +13,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.parthapaaaaa.lokala-prototype",
+      "buildNumber": "14",
       "supportsTablet": false,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Lokala uses your location to show deals near you.",
@@ -21,6 +22,7 @@
     },
     "android": {
       "package": "com.parthapaaaaa.lokalaprototype",
+      "versionCode": 14,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
@@ -28,7 +30,9 @@
       },
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -54,7 +58,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "792d6261-3994-404b-95a8-eac8eddbd52e"
+        "projectId": "ae81cf43-f537-498d-b026-e5dd7302a025"
       }
     }
   }
