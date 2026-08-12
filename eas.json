@@ -1,64 +1,23 @@
 {
-  "expo": {
-    "name": "Lokala",
-    "slug": "lokala-prototype",
-    "version": "1.0.0",
-    "scheme": "lokala",
-    "newArchEnabled": true,
-    "icon": "./assets/appicon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "bundleIdentifier": "com.parthapaaaaa.lokala-prototype",
-      "buildNumber": "14",
-      "supportsTablet": false,
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Lokala uses your location to show deals near you.",
-        "ITSAppUsesNonExemptEncryption": false
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://137.146.127.112:3000"
       }
     },
-    "android": {
-      "package": "com.parthapaaaaa.lokalaprototype",
-      "versionCode": 14,
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "permissions": [
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
-    },
-    "plugins": [
-      "expo-font",
-      "expo-location",
-      "expo-web-browser",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Lokala uses your camera to scan a business's QR code so you can log your visit."
-        }
-      ],
-      [
-        "@stripe/stripe-react-native",
-        {
-          "merchantIdentifier": "merchant.com.parthapaaaaa.lokala-prototype",
-          "enableGooglePay": true
-        }
-      ]
-    ],
-    "assets": [
-      "./assets"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "ae81cf43-f537-498d-b026-e5dd7302a025"
+    "production": {
+      "autoIncrement": false,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://www.mylokala.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ifvnofdnjvmsfsxhixip.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlmdm5vZmRuanZtc2ZzeGhpeGlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2OTU1NjgsImV4cCI6MjA4NDI3MTU2OH0.PsTN1zWZdgGukJnOWQjRF0_KrakFUBa1WsYyZWdXnsE",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51TlI0y2KtHrcni4xU6FfIBa4RNmfCgFDsqFIPOI0N6SvAOd4TTCOY72MKSWfObasssb6NQdHdTqNewe2UkhruJHc00YQ9n5qz0"
       }
     }
   }
