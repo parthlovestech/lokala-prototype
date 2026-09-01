@@ -83,38 +83,11 @@ export function parseQrValue(raw: string): string | null {
   return null;
 }
 
-/** 
- * Look up a business by its public code (from the QR code URL).
- * Uses the Supabase RPC function that returns business details.
- */
-export async function getBusinessByPublicCode(publicCode: string, signal?: AbortSignal): Promise<{ name: string } | null> {
-  let query = supabase.rpc('get_business_for_qr_code', {
-    input_public_code: publicCode,
-  });
-
-  // Lets the caller cancel a stalled lookup instead of waiting forever.
-  if (signal) query = query.abortSignal(signal);
-
-  const { data, error } = await query;
-
-  if (error || !data) {
-    console.error('getBusinessByPublicCode error:', error);
-    return null;
-  }
-
-  const row = Array.isArray(data) ? data[0] : data;
-
-  // If the RPC returned nothing valid
-  if (!row || (!row.public_code && !row.business_name)) return null;
-
-  // Display information only. The merchant is resolved server-side from the
-  // scanned public code by the payment API — the mobile app never derives, holds,
-  // or forwards an internal business/owner id (doing so is what previously fed a
-  // non-uuid into a uuid column).
-  return {
-    name: row.business_name || 'Lokala Business',
-  };
-}
+// NOTE: public-code lookup for scan-and-pay now lives in ./paymentHub
+// (resolvePaymentHub, calling public.resolve_payment_hub) -- the new
+// gift-balance schema's payment_hubs table, not the legacy
+// get_business_for_qr_code RPC this function used to call. That RPC does not
+// exist on the current Supabase project.
 
 /** Fetches the current user's business, if they've set one up. */
 export async function getMyBusiness(ownerId: string): Promise<Business | null> {
