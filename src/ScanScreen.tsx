@@ -10,7 +10,8 @@ import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-ca
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './navigation';
-import { parseQrValue, getBusinessById, getBusinessByPublicCode } from './business';
+import { parseQrValue, getBusinessById } from './business';
+import { resolvePaymentHub } from './paymentHub';
 
 // A lookup that hasn't answered by now is never going to — cut it loose so the
 // "Looking up business…" spinner can't run forever.
@@ -94,32 +95,54 @@ export default function ScanScreen() {
 
     try {
       // Check if it's a legacy UUID (length 36 with dashes) or a new public code
-      let business = null;
       if (codeOrId.length === 36 && codeOrId.includes('-')) {
-        // Legacy UUID format (from old QR codes)
-        business = await getBusinessById(codeOrId, controller.signal);
-      } else {
-        // New public code format (e.g., "nAOpsGQ5ZqhcNHJL" from URL)
-        business = await getBusinessByPublicCode(codeOrId, controller.signal);
+        // Legacy UUID format (from old QR codes) -- pre-dates the gift-balance
+        // payment_hubs schema. Kept only so an old printed code doesn't hard
+        // fail; it cannot resolve to anything payable today.
+        const business = await getBusinessById(codeOrId, controller.signal);
+
+        if (!isMountedRef.current || !isFocusedRef.current) return;
+
+        if (!business) {
+          setErrorText(
+            timedOut
+              ? CONNECTION_ERROR_TEXT
+              : "That code doesn't match a Lokala business. Double check and try again."
+          );
+          return;
+        }
+
+        setErrorText("That's an old Lokala code. Ask the business for their current QR code.");
+        return;
       }
+
+      // New public code format (e.g. from a payment_hubs QR/link) -- resolve
+      // against the gift-balance schema (public.resolve_payment_hub), the
+      // same function the web app's /pay/[public_code] page uses.
+      const hub = await resolvePaymentHub(codeOrId, controller.signal);
 
       // Gone or blurred: leave silently. An abort triggered by blur is not a
       // failure, so it must not surface as not-found or as a timeout.
       if (!isMountedRef.current || !isFocusedRef.current) return;
 
-      if (!business) {
+      if (!hub) {
         setErrorText(
           timedOut
             ? CONNECTION_ERROR_TEXT
-            : "That code doesn't match a Lokala business. Double check and try again."
+            : "This payment code isn't active. Ask the business for their current Lokala QR code."
         );
         return;
       }
 
-      // Forward the SCANNED public code itself — never a resolved/owner id. The
-      // payment API resolves the merchant from this code server-side; the lookup
-      // above is only used to confirm the business exists and to show its name.
-      navigation.navigate('Pay', { publicCode: codeOrId, businessName: business.name });
+      // Forward the SCANNED public code itself — never a resolved/owner id.
+      // redeem_lokala_balance resolves the merchant from this code
+      // server-side; the lookup above only confirms the hub is active and
+      // shows its name.
+      navigation.navigate('Pay', {
+        publicCode: codeOrId,
+        businessName: hub.merchantDisplayName,
+        locationLabel: hub.locationLabel,
+      });
       didNavigate = true;
     } catch (e) {
       // Supabase folds most failures into `error`, but a transport-level throw

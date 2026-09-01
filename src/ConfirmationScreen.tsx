@@ -10,9 +10,9 @@ import { formatCents } from './payments/money';
 export default function ConfirmationScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'Confirmation'>>();
-  // Everything shown here comes from the server-confirmed receipt — no locally
-  // calculated totals, and no internal identifiers are present in this shape.
-  const { receipt } = route.params;
+  // Everything shown here comes from the server-confirmed redemption result --
+  // no locally calculated totals.
+  const { confirmation } = route.params;
 
   const scale = useRef(new Animated.Value(0.6)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -23,11 +23,6 @@ export default function ConfirmationScreen() {
       Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
     ]).start();
   }, []);
-
-  const settledAt = receipt.succeededAt ?? receipt.createdAt;
-  const timestamp = new Date(settledAt).toLocaleString(undefined, {
-    hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric',
-  });
 
   const handleDone = () => {
     navigation.dispatch(
@@ -42,30 +37,42 @@ export default function ConfirmationScreen() {
           <Ionicons name="checkmark" size={56} color="#fff" />
         </Animated.View>
 
-        <Text style={styles.title}>Payment complete</Text>
-        <Text style={styles.subtitle}>{receipt.businessName ?? 'Local business'}</Text>
+        <Text style={styles.title}>
+          {formatCents(confirmation.balanceDebitedCents)} redeemed
+        </Text>
+        <Text style={styles.subtitle}>Paid to {confirmation.merchantDisplayName}</Text>
 
         <View style={styles.card}>
           <View style={styles.row}>
+            <Text style={styles.rowLabel}>Confirmation code</Text>
+            <Text style={styles.rowMono}>{confirmation.confirmationCode}</Text>
+          </View>
+          <View style={styles.row}>
             <Text style={styles.rowLabel}>Subtotal</Text>
-            <Text style={styles.rowValue}>{formatCents(receipt.subtotalCents)}</Text>
+            <Text style={styles.rowValue}>{formatCents(confirmation.subtotalCents)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Tip</Text>
-            <Text style={styles.rowValue}>{formatCents(receipt.tipCents)}</Text>
+            <Text style={styles.rowValue}>{formatCents(confirmation.tipCents)}</Text>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Lokala fee</Text>
-            <Text style={styles.rowValue}>{formatCents(receipt.customerFeeCents)}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatCents(receipt.totalCents)}</Text>
-          </View>
+          {confirmation.remainingWalletBalanceCents !== null && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.totalLabel}>Remaining Lokala balance</Text>
+                <Text style={styles.totalValue}>
+                  {formatCents(confirmation.remainingWalletBalanceCents)}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
-        <Text style={styles.timestamp}>{timestamp}</Text>
+        {confirmation.idempotent && (
+          <Text style={styles.idempotentNote}>
+            This redemption was already confirmed — showing your original receipt.
+          </Text>
+        )}
       </View>
 
       <View style={styles.footer}>
@@ -85,7 +92,7 @@ const styles = StyleSheet.create({
     width: 96, height: 96, borderRadius: 48, backgroundColor: '#059669',
     alignItems: 'center', justifyContent: 'center', marginBottom: 24,
   },
-  title: { fontSize: 22, fontWeight: '800', color: '#111', letterSpacing: -0.3 },
+  title: { fontSize: 22, fontWeight: '800', color: '#111', letterSpacing: -0.3, textAlign: 'center' },
   subtitle: { fontSize: 16, color: '#64748B', marginTop: 4, marginBottom: 28 },
 
   card: {
@@ -95,11 +102,12 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   rowLabel: { fontSize: 15, color: '#64748B' },
   rowValue: { fontSize: 15, fontWeight: '600', color: '#111' },
+  rowMono: { fontSize: 15, fontWeight: '700', color: '#111', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   divider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 10 },
-  totalLabel: { fontSize: 18, fontWeight: '700', color: '#111' },
-  totalValue: { fontSize: 24, fontWeight: '800', color: '#059669' },
+  totalLabel: { fontSize: 15, fontWeight: '700', color: '#111' },
+  totalValue: { fontSize: 18, fontWeight: '800', color: '#059669' },
 
-  timestamp: { fontSize: 13, color: '#94A3B8', marginTop: 20 },
+  idempotentNote: { fontSize: 12, color: '#94A3B8', marginTop: 20, textAlign: 'center' },
 
   footer: { paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 8 : 16 },
   doneBtn: { backgroundColor: '#111', borderRadius: 14, paddingVertical: 17, alignItems: 'center' },
