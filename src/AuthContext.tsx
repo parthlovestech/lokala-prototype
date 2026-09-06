@@ -3,6 +3,12 @@ import { supabase } from './supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { Alert } from 'react-native';
 import * as Linking from 'expo-linking';
+import { mapCatalogDealRow, type CatalogDealJoinRow } from './lib/catalog/browseDeals';
+import { toggleSavedDeal } from './lib/catalog/toggleSavedDeal';
+import {
+  recordCatalogRedemption,
+  type RecordCatalogRedemptionFailure,
+} from './lib/catalog/recordCatalogRedemption';
 
 // Where a discount comes from. Everything today is a Chamber discount, but this
 // makes it trivial to filter/tag once non-Chamber partner discounts are added.
@@ -66,9 +72,17 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   toggleSave: (dealId: string) => Promise<void>;
-  recordRedemption: (deal: Deal) => Promise<void>;
+  /** Informational/tracking redemption for the MMCC catalog only -- entirely
+   * separate from the gift-balance wallet redemption. Returns the outcome so
+   * the caller can show "already redeemed today" distinctly rather than
+   * treating every call as a success. */
+  recordRedemption: (deal: Deal) => Promise<RecordRedemptionResult>;
   refreshRedemptions: () => Promise<void>;
 }
+
+export type RecordRedemptionResult =
+  | { ok: true }
+  | { ok: false; failure: RecordCatalogRedemptionFailure };
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -82,32 +96,18 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   deleteAccount: async () => {},
   toggleSave: async () => {},
-  recordRedemption: async () => {},
+  recordRedemption: async () => ({ ok: false, failure: 'server_error' }),
   refreshRedemptions: async () => {},
 });
 
-function mapRow(row: any, savedIds: Set<string>): Deal {
-  return {
-    id: row.id,
-    businessName: row.business_name,
-    title: row.title,
-    subtitle: row.subtitle,
-    discountDetail: row.discount_detail,
-    expiresAt: row.expires_at,
-    isSaved: savedIds.has(row.id),
-    category: row.category,
-    distanceMeters: row.distance_meters,
-    lat: row.latitude,
-    lng: row.longitude,
-    percentOff: row.percent_off ?? undefined,
-    address: row.address,
-    phone: row.phone ?? undefined,
-    website: row.website ?? undefined,
-    // Every discount today comes from the Chamber. Once the `deals` table has a
-    // `source` column populated for non-Chamber partners, this will pick it up automatically.
-    source: (row.source as DealSource) ?? 'chamber',
-  };
-}
+/** catalog_deals joined to catalog_locations/catalog_businesses -- the same
+ * anon-safe RLS-scoped shape web's marketplace page reads (Supabase
+ * migration 20260901000019). Row -> Deal mapping (including the Silver
+ * Street Tavern non-dedup behavior) lives in ./lib/catalog/browseDeals.ts,
+ * unit-tested there. */
+const CATALOG_DEAL_SELECT =
+  'id, title, subtitle, discount_detail, expires_at, category, distance_meters, percent_off, ' +
+  'catalog_locations!inner(address, latitude, longitude, phone, website, catalog_businesses!inner(business_name))';
 
 export const AuthProvider = ({ children }: any) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -163,13 +163,23 @@ export const AuthProvider = ({ children }: any) => {
   const loadDeals = async (userId: string) => {
     setDealsLoading(true);
     try {
-      const { data: savedData } = await supabase.from('saved_deals').select('deal_id').eq('user_id', userId);
-      const ids = new Set<string>((savedData ?? []).map((r: any) => r.deal_id));
+      const { data: savedData } = await supabase
+        .from('saved_catalog_deals')
+        .select('catalog_deal_id')
+        .eq('user_id', userId);
+      const ids = new Set<string>((savedData ?? []).map((r: any) => r.catalog_deal_id));
       setSavedIds(ids);
 
-      const { data: dealsData, error } = await supabase.from('deals').select('*').eq('is_active', true);
+      const { data: dealsData, error } = await supabase
+        .from('catalog_deals')
+        .select(CATALOG_DEAL_SELECT)
+        .eq('status', 'active');
       if (error) throw error;
-      setDeals((dealsData ?? []).map((row: any) => mapRow(row, ids)));
+      setDeals(
+        ((dealsData ?? []) as unknown as CatalogDealJoinRow[]).map((row) =>
+          mapCatalogDealRow(row, ids.has(row.id)),
+        ),
+      );
     } catch (e) {
       console.error('loadDeals error', e);
     } finally {
@@ -178,14 +188,19 @@ export const AuthProvider = ({ children }: any) => {
   };
 
   const loadRedemptions = async (userId: string) => {
-    const { data } = await supabase.from('redemptions').select('*').eq('user_id', userId).order('redeemed_at', { ascending: false }).limit(20);
+    const { data } = await supabase
+      .from('catalog_deal_redemptions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('redeemed_at', { ascending: false })
+      .limit(20);
     if (data) {
       setRedemptions(data.map((r: any) => ({
         id: r.id,
-        businessName: r.business_name,
-        dealTitle: r.deal_title,
-        discountDetail: r.discount_detail,
-        category: r.category,
+        businessName: r.business_name_snapshot,
+        dealTitle: r.deal_title_snapshot,
+        discountDetail: r.discount_detail_snapshot,
+        category: r.category_snapshot,
         redeemedAt: formatRelativeTime(r.redeemed_at),
       })));
     }
@@ -232,8 +247,8 @@ export const AuthProvider = ({ children }: any) => {
     if (!user) return;
     try {
       // 1. Manually clean up associated table data (just to be safe)
-      await supabase.from('saved_deals').delete().eq('user_id', user.id);
-      await supabase.from('redemptions').delete().eq('user_id', user.id);
+      await supabase.from('saved_catalog_deals').delete().eq('user_id', user.id);
+      await supabase.from('catalog_deal_redemptions').delete().eq('user_id', user.id);
       await supabase.from('profiles').delete().eq('id', user.id);
       
       // 2. Call our secure SQL function to permanently delete the Auth account
@@ -256,37 +271,63 @@ export const AuthProvider = ({ children }: any) => {
   const toggleSave = async (dealId: string) => {
     if (!user) return;
     const isCurrentlySaved = savedIds.has(dealId);
+
+    const result = await toggleSavedDeal(isCurrentlySaved, {
+      insertSave: () => supabase.from('saved_catalog_deals').insert({ user_id: user.id, catalog_deal_id: dealId }),
+      deleteSave: () =>
+        supabase.from('saved_catalog_deals').delete().eq('user_id', user.id).eq('catalog_deal_id', dealId),
+    });
+
+    if (!result.ok) {
+      console.error('toggleSave error', result.error);
+      return;
+    }
+
+    // Sync local state to the database's actual outcome -- for the state-drift
+    // self-heal case (already saved, now unsaved) this may differ from a naive
+    // optimistic flip of isCurrentlySaved.
     setSavedIds(prev => {
       const next = new Set(prev);
-      isCurrentlySaved ? next.delete(dealId) : next.add(dealId);
+      result.isSaved ? next.add(dealId) : next.delete(dealId);
       return next;
     });
-    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, isSaved: !d.isSaved } : d));
-
-    if (isCurrentlySaved) {
-      await supabase.from('saved_deals').delete().eq('user_id', user.id).eq('deal_id', dealId);
-    } else {
-      await supabase.from('saved_deals').insert({ user_id: user.id, deal_id: dealId });
-    }
+    setDeals(prev => prev.map(d => (d.id === dealId ? { ...d, isSaved: result.isSaved } : d)));
   };
 
-  const recordRedemption = async (deal: Deal) => {
-    if (!user) return;
+  const recordRedemption = async (deal: Deal): Promise<RecordRedemptionResult> => {
+    if (!user) return { ok: false, failure: 'server_error' };
 
-    // Writes permanently to the Supabase database
-    const { error } = await supabase.from('redemptions').insert({
-      user_id: user.id,
-      deal_id: deal.id,
-      business_name: deal.businessName,
-      deal_title: deal.title,
-      discount_detail: deal.discountDetail,
-      category: deal.category,
-    });
+    const result = await recordCatalogRedemption(
+      {
+        catalogDealId: deal.id,
+        businessNameSnapshot: deal.businessName,
+        dealTitleSnapshot: deal.title,
+        discountDetailSnapshot: deal.discountDetail,
+        categorySnapshot: deal.category,
+      },
+      {
+        insertRedemption: (input) =>
+          supabase.from('catalog_deal_redemptions').insert({
+            user_id: user.id,
+            catalog_deal_id: input.catalogDealId,
+            business_name_snapshot: input.businessNameSnapshot,
+            deal_title_snapshot: input.dealTitleSnapshot,
+            discount_detail_snapshot: input.discountDetailSnapshot,
+            category_snapshot: input.categorySnapshot,
+          }),
+      },
+    );
 
-    if (error) console.error("Database Redemption Error:", error);
+    if (!result.ok) {
+      if (result.failure !== 'already_redeemed_today') {
+        console.error('recordRedemption error', result.failure);
+      }
+      return result;
+    }
 
     // Refresh UI to show the newly saved database row
     await loadRedemptions(user.id);
+    return result;
   };
 
   return (

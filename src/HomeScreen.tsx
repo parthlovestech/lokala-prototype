@@ -4,12 +4,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, Platform, ScrollView,
-  Linking, ActivityIndicator, Image, Animated, PanResponder
+  Linking, ActivityIndicator, Image, Animated, PanResponder, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import { useAuth, Deal, SOURCE_LABELS, SOURCE_SHORT_LABELS } from './AuthContext';
+import { CATALOG_CATEGORIES, filterDealsByCategory } from './lib/catalog/browseDeals';
 
 // Businesses where you can pay directly with your Lokala card/QR (separate from
 // the discount deals below — these are places that accept Lokala as payment).
@@ -19,14 +20,17 @@ const PAY_LOCATIONS = [
   { id: 'p3', name: 'Holy Cannoli', address: 'Waterville, ME' },
 ];
 
-const CATEGORIES = ['All', 'coffee', 'food', 'health', 'retail', 'services', 'auto'];
+// 'All' plus the fixed 7-category MMCC catalog set (CATALOG_CATEGORIES,
+// shared conceptually with web's src/lib/catalog/browse-deals.ts -- same
+// values, same order, kept in sync manually since these are separate repos).
+const CATEGORIES = ['All', ...CATALOG_CATEGORIES];
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  All: 'apps', coffee: 'cafe', food: 'restaurant',
-  health: 'heart', retail: 'bag', services: 'briefcase', auto: 'car',
+  All: 'apps', auto: 'car', coffee: 'cafe', drinks: 'wine', food: 'restaurant',
+  health: 'heart', retail: 'bag', services: 'briefcase',
 };
 const CATEGORY_LABELS: Record<string, string> = {
-  All: 'All', coffee: 'Coffee', food: 'Food',
-  health: 'Health', retail: 'Retail', services: 'Services', auto: 'Auto',
+  All: 'All', auto: 'Auto', coffee: 'Coffee', drinks: 'Drinks', food: 'Food',
+  health: 'Health', retail: 'Retail', services: 'Services',
 };
 
 const openMaps = (deal: { businessName: string; address: string; lat?: number; lng?: number }) => {
@@ -129,18 +133,31 @@ export default function HomeScreen() {
     })
   ).current;
 
-  const filteredDeals = deals.filter((d: Deal) => {
+  const categoryFilteredDeals = filterDealsByCategory(deals, activeCategory === 'All' ? null : activeCategory);
+  const filteredDeals = categoryFilteredDeals.filter((d: Deal) => {
     const matchesSearch = d.businessName.toLowerCase().includes(search.toLowerCase());
     const matchesTab = isMyDealsTab ? d.isSaved : true;
-    const matchesCategory = activeCategory === 'All' || d.category === activeCategory;
-    return matchesSearch && matchesTab && matchesCategory;
+    return matchesSearch && matchesTab;
   });
 
   const handleRedeem = async () => {
     if (!selectedDeal || isRedeeming) return;
     setIsRedeeming(true);
-    await recordRedemption(selectedDeal);
+    const result = await recordRedemption(selectedDeal);
     setIsRedeeming(false);
+
+    if (!result.ok) {
+      if (result.failure === 'already_redeemed_today') {
+        Alert.alert(
+          'Already redeemed today',
+          "You've already redeemed this deal today. Recurring deals can be redeemed again tomorrow.",
+        );
+      } else {
+        Alert.alert('Something went wrong', 'Please try again.');
+      }
+      return;
+    }
+
     setHasPressedDiscount(true);
   };
 
@@ -396,6 +413,9 @@ export default function HomeScreen() {
                   </View>
 
                   <Text style={styles.modalTitle}>{selectedDeal?.title}</Text>
+                  {selectedDeal?.subtitle ? (
+                    <Text style={styles.modalSubtitle}>{selectedDeal.subtitle}</Text>
+                  ) : null}
 
                   {/* The "Coupon Ticket" Look */}
                   <View style={styles.couponContainer}>
@@ -632,7 +652,8 @@ const styles = StyleSheet.create({
   
   modalSaveCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
   
-  modalTitle: { fontSize: 32, fontWeight: '900', color: '#0F172A', textAlign: 'left', marginBottom: 24, letterSpacing: -1, width: '100%', lineHeight: 38 },
+  modalTitle: { fontSize: 32, fontWeight: '900', color: '#0F172A', textAlign: 'left', marginBottom: 8, letterSpacing: -1, width: '100%', lineHeight: 38 },
+  modalSubtitle: { fontSize: 15, color: '#64748B', fontWeight: '500', width: '100%', marginBottom: 24 },
 
   // The "Ticket/Coupon" design
   couponContainer: { width: '100%', backgroundColor: '#ECFDF5', borderRadius: 20, padding: 2, marginBottom: 24, position: 'relative', overflow: 'hidden' },
