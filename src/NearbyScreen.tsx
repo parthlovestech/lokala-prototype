@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Platform, ActivityIndicator, Dimensions, Modal, Linking, Image,
-  Animated, PanResponder
+  Animated, PanResponder, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -214,8 +214,21 @@ export default function NearbyScreen() {
   const handleRedeem = async () => {
     if (!selectedDeal || isRedeeming) return;
     setIsRedeeming(true);
-    await recordRedemption(selectedDeal);
+    const result = await recordRedemption(selectedDeal);
     setIsRedeeming(false);
+
+    if (!result.ok) {
+      if (result.failure === 'already_redeemed_today') {
+        Alert.alert(
+          'Already redeemed today',
+          "You've already redeemed this deal today. Recurring deals can be redeemed again tomorrow.",
+        );
+      } else {
+        Alert.alert('Something went wrong', 'Please try again.');
+      }
+      return;
+    }
+
     setHasPressedDiscount(true);
   };
 
