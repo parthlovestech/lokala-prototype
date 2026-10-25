@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.parthapaaaaa.lokalaprototype",
-      "versionCode": 15,
+      "versionCode": 16,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#ffffff",
@@ -60,9 +60,6 @@
         }
       ],
       "./plugins/withStripeFix"
-    ],
-    "assets": [
-      "./assets"
     ],
     "extra": {
       "eas": {
