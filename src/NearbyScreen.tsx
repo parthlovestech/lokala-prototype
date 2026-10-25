@@ -380,8 +380,6 @@ export default function NearbyScreen() {
                   />
                 </View>
 
-                <Text style={styles.qrMemberId}>{profile?.member_id}</Text>
-                <Text style={styles.qrHelperText}>Business verifies by Member ID</Text>
                 <TouchableOpacity style={[styles.cancelBtn, { marginTop: 24 }]} onPress={closeModal}>
                   <Text style={[styles.cancelBtnText, { color: '#059669', fontSize: 16 }]}>Done</Text>
                 </TouchableOpacity>
@@ -568,8 +566,8 @@ const styles = StyleSheet.create({
     borderRadius: 12, 
   },
   
-  qrMemberId: { fontSize: 28, fontWeight: '900', color: '#0F172A', letterSpacing: 2, marginBottom: 4 },
-  qrHelperText: { fontSize: 14, color: '#64748B', fontWeight: '500' },
+  // qrMemberId: { fontSize: 28, fontWeight: '900', color: '#0F172A', letterSpacing: 2, marginBottom: 4 },
+  // qrHelperText: { fontSize: 14, color: '#64748B', fontWeight: '500' },
 
   redeemBtn: { backgroundColor: '#059669', paddingVertical: 18, borderRadius: 16, width: '100%', alignItems: 'center', marginBottom: 8, marginTop: 32, shadowColor: '#059669', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
   redeemBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },

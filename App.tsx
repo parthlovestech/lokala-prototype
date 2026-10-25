@@ -57,7 +57,10 @@ function MainTabNavigator() {
           let iconName: keyof typeof Ionicons.glyphMap = 'home';
           if (route.name === 'Deals') iconName = focused ? 'pricetag' : 'pricetag-outline';
           if (route.name === 'Nearby') iconName = focused ? 'map' : 'map-outline';
-          if (route.name === 'Scan') iconName = focused ? 'qr-code' : 'qr-code-outline';
+          
+          // COMMENT THIS OUT FOR NOW
+          // if (route.name === 'Scan') iconName = focused ? 'qr-code' : 'qr-code-outline';
+          
           if (route.name === 'Saved') iconName = focused ? 'bookmark' : 'bookmark-outline';
           if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
           if (route.name === 'Events') iconName = focused ? 'calendar' : 'calendar-outline';
@@ -68,12 +71,13 @@ function MainTabNavigator() {
       <Tab.Screen name="Deals" component={HomeScreen} />
       <Tab.Screen name="Nearby" component={NearbyScreen} />
       
-      {/* Conditionally render the Events tab based on our feature flag */}
       {ENABLE_EVENTS_FEATURE && (
         <Tab.Screen name="Events" component={EventsScreen} />
       )}
       
-      <Tab.Screen name="Scan" component={ScanScreen} options={{ tabBarLabel: 'Scan' }} />
+      {/* COMMENT THIS OUT FOR NOW */}
+      {/* <Tab.Screen name="Scan" component={ScanScreen} options={{ tabBarLabel: 'Scan' }} /> */}
+      
       <Tab.Screen name="Saved" component={HomeScreen} />
       <Tab.Screen name="Profile" component={AccountScreen} />
     </Tab.Navigator>

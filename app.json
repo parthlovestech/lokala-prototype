@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lokala",
     "slug": "lokala-prototype",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "lokala",
     "newArchEnabled": true,
     "icon": "./assets/appicon.png",
@@ -13,7 +13,6 @@
     },
     "ios": {
       "bundleIdentifier": "com.parthapaaaaa.lokala-prototype",
-      "buildNumber": "14",
       "supportsTablet": false,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Lokala uses your location to show deals near you.",
@@ -22,10 +21,10 @@
     },
     "android": {
       "package": "com.parthapaaaaa.lokalaprototype",
-      "versionCode": 14,
+      "versionCode": 15,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
+        "backgroundColor": "#ffffff",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
@@ -51,7 +50,16 @@
           "merchantIdentifier": "merchant.com.parthapaaaaa.lokala-prototype",
           "enableGooglePay": true
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ],
+      "./plugins/withStripeFix"
     ],
     "assets": [
       "./assets"

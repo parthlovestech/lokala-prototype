@@ -45,7 +45,7 @@ export function PrivacyPolicyContent() {
       <Text style={styles.h3}>1.4 Analytics</Text>
       <Text style={styles.p}>
         We use <Text style={styles.bold}>Supabase Analytics</Text> to collect usage data about how users interact with the app (such as screens viewed, features used, and general app performance). This data helps us understand usage patterns and improve the Services.
-      </Text>
+      </Text> ;''
 
       <Text style={styles.h3}>1.5 Apple App Privacy Details</Text>
       <Text style={styles.p}>
@@ -69,7 +69,7 @@ export function PrivacyPolicyContent() {
       <Text style={styles.h2}>3. How We Share Your Information</Text>
       <Text style={styles.p}>We do not sell your personal information. We may share information with:</Text>
       <View style={styles.list}>
-        <Text style={styles.li}>• <Text style={styles.bold}>Stripe and other payment providers</Text> to process purchases and payouts.</Text>
+        <Text style={ styles.li}>• <Text style={styles.bold}>Stripe and other payment providers</Text> to process purchases and payouts.</Text>
         <Text style={styles.li}>• <Text style={styles.bold}>Participating Merchants</Text>, limited to information necessary to confirm a transaction.</Text>
         <Text style={styles.li}>• <Text style={styles.bold}>Service providers</Text> under confidentiality obligations.</Text>
         <Text style={styles.li}>• <Text style={styles.bold}>Mid-Maine Chamber of Commerce and Colby College</Text>, in aggregate or de-identified form only.</Text>

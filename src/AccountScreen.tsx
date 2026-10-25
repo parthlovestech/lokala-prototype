@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, Alert, Switch, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './AuthContext';
@@ -18,7 +18,6 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 export default function AccountScreen() {
   const { user, profile, deals, redemptions, signOut, deleteAccount, refreshRedemptions } = useAuth();
 
-  const [doNotSell, setDoNotSell] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
 
@@ -29,7 +28,6 @@ export default function AccountScreen() {
   const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Member';
   const displayEmail = user?.email || '';
   const savedCount = deals.filter(d => d.isSaved).length;
-  const memberId = profile?.member_id ?? '···';
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -67,17 +65,6 @@ export default function AccountScreen() {
         </View>
 
         <View style={styles.idCard}>
-          <View style={styles.idCardTop}>
-            <View>
-              <Text style={styles.idCardLabel}>Member ID</Text>
-              <Text style={styles.idCardValue}>{memberId}</Text>
-            </View>
-            <View style={styles.idCardIconWrap}>
-              <Ionicons name="card-outline" size={22} color="#fff" />
-            </View>
-          </View>
-
-          <View style={styles.idCardDivider} />
           <View style={styles.idCardBottom}>
             <View style={styles.idCardStat}>
               <Text style={styles.idCardStatNum}>{savedCount}</Text>
@@ -130,20 +117,6 @@ export default function AccountScreen() {
 
         <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Settings & Privacy</Text>
         <View style={styles.settingsCard}>
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1, paddingRight: 16 }}>
-              <Text style={styles.settingTitle}>Do Not Sell My Personal Information</Text>
-              <Text style={styles.settingSub}>Opt-out of aggregated data selling to partner businesses.</Text>
-            </View>
-            <Switch
-              value={doNotSell}
-              onValueChange={setDoNotSell}
-              trackColor={{ false: '#E2E8F0', true: '#059669' }}
-              thumbColor={Platform.OS === 'ios' ? '#FFF' : doNotSell ? '#FFF' : '#F8FAFC'}
-            />
-          </View>
-          <View style={styles.settingDivider} />
-          
           <TouchableOpacity style={styles.settingRow} onPress={() => setShowPrivacyModal(true)} activeOpacity={0.7}>
             <View style={{ flex: 1 }}>
               <Text style={styles.settingTitle}>Privacy Policy</Text>
@@ -219,12 +192,6 @@ const styles = StyleSheet.create({
   memberText: { fontSize: 11, color: '#555', fontWeight: '500' },
 
   idCard: { backgroundColor: '#1a1a1a', borderRadius: 18, padding: 20, marginBottom: 28 },
-  idCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  idCardLabel: { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
-  idCardValue: { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: 2 },
-  idCardIconWrap: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-
-  idCardDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 16 },
   idCardBottom: { flexDirection: 'row', alignItems: 'center' },
   idCardStat: { flex: 1, alignItems: 'center' },
   idCardStatNum: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 3 },

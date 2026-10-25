@@ -1,6 +1,6 @@
 // --- START OF FILE lokala-prototype/src/HomeScreen.tsx ---
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, Platform, ScrollView,
@@ -12,6 +12,7 @@ import { useRoute } from '@react-navigation/native';
 import { useAuth, Deal, SOURCE_LABELS, SOURCE_SHORT_LABELS } from './AuthContext';
 import { CATALOG_CATEGORIES, filterDealsByCategory } from './lib/catalog/browseDeals';
 
+<<<<<<< HEAD
 // Businesses where you can pay directly with your Lokala card/QR (separate from
 // the discount deals below — these are places that accept Lokala as payment).
 const PAY_LOCATIONS = [
@@ -24,6 +25,9 @@ const PAY_LOCATIONS = [
 // shared conceptually with web's src/lib/catalog/browse-deals.ts -- same
 // values, same order, kept in sync manually since these are separate repos).
 const CATEGORIES = ['All', ...CATALOG_CATEGORIES];
+=======
+const CATEGORIES = ['All', 'coffee', 'food', 'health', 'retail', 'services', 'auto'];
+>>>>>>> 63effe1 (icon fixes for google play console)
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   All: 'apps', auto: 'car', coffee: 'cafe', drinks: 'wine', food: 'restaurant',
   health: 'heart', retail: 'bag', services: 'briefcase',
@@ -66,51 +70,6 @@ export default function HomeScreen() {
   
   const [hasPressedDiscount, setHasPressedDiscount] = useState(false);
   const [isRedeeming, setIsRedeeming] = useState(false);
-
-  // --- Pulse Animations for Status Dots (staggered per card) ---
-  const pulseAnims = useRef([
-    new Animated.Value(0),
-    new Animated.Value(0.6),
-    new Animated.Value(1.2),
-  ]).current;
-
-  useEffect(() => {
-    const loops = pulseAnims.map((anim, index) => {
-      const initialDelay = index * 600;
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.delay(initialDelay),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      loop.start();
-      return loop;
-    });
-    
-    return () => loops.forEach(loop => loop.stop());
-  }, []);
-
-  const pulseScales = pulseAnims.map(anim => 
-    anim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.7, 1.15],
-    })
-  );
-  const pulseOpacities = pulseAnims.map(anim => 
-    anim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.6, 0],
-    })
-  );
 
   // --- Slide to Close Logic ---
   const panY = useRef(new Animated.Value(0)).current;
@@ -240,64 +199,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* --- COMPACT LOKALA DIRECT SECTION --- */}
-        {!isMyDealsTab && (
-          <View style={styles.directPaySection}>
-            <View style={styles.directPayHeader}>
-              <Ionicons name="flash" size={14} color="#059669" />
-              <Text style={styles.directPayTitle}>Lokala Direct</Text>
-            </View>
-            
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.directPayScroll}
-            >
-              {PAY_LOCATIONS.map((biz, index) => {
-                const scale = pulseScales[index] || new Animated.Value(1);
-                const opacity = pulseOpacities[index] || new Animated.Value(0);
-                
-                return (
-                  <TouchableOpacity
-                    key={biz.id}
-                    activeOpacity={1}
-                    onPress={() => openMaps({ businessName: biz.name, address: biz.address })}
-                    onPressIn={handlePressIn}
-                    onPressOut={handlePressOut}
-                  >
-                    <Animated.View style={[
-                      styles.directPayCard,
-                      { transform: [{ scale: cardScale }] }
-                    ]}>
-                      <View style={styles.directPayAccentLine} />
-                      
-                      <View style={styles.directPayContent}>
-                        <View style={styles.directPayIconContainer}>
-                          <Animated.View 
-                            style={[
-                              styles.directPayPulse,
-                              {
-                                transform: [{ scale }],
-                                opacity,
-                              }
-                            ]} 
-                          />
-                          <Ionicons name="scan-circle-outline" size={18} color="#059669" />
-                        </View>
-                        
-                        <View style={styles.directPayTextContainer}>
-                          <Text style={styles.directPayName} numberOfLines={1}>{biz.name}</Text>
-                          <Text style={styles.directPayAddress} numberOfLines={1}>{biz.address}</Text>
-                        </View>
-                      </View>
-                    </Animated.View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
         {/* --- SEARCH & FILTERS --- */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
@@ -377,9 +278,6 @@ export default function HomeScreen() {
                   <View style={styles.memberCardWrap}>
                     <Image source={require('../assets/card.jpeg')} style={styles.actualCardImage} resizeMode="contain" />
                   </View>
-
-                  <Text style={styles.qrMemberId}>{profile?.member_id}</Text>
-                  <Text style={styles.qrHelperText}>Business verifies by Member ID</Text>
 
                   <TouchableOpacity style={[styles.cancelBtn, { marginTop: 20 }]} onPress={closeModal}>
                     <Text style={[styles.cancelBtnText, { color: '#059669', fontSize: 16 }]}>Done</Text>
@@ -505,99 +403,6 @@ const styles = StyleSheet.create({
   locationContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12, marginTop: 0, gap: 6 },
   locationText: { fontSize: 14, color: '#059669', fontWeight: '700' },
 
-  // --- COMPACT DIRECT PAY SECTION ---
-  directPaySection: { marginBottom: 16 },
-  directPayHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6, 
-    paddingHorizontal: 20, 
-    marginBottom: 8,
-  },
-  directPayTitle: { 
-    fontSize: 13, 
-    fontWeight: '800', 
-    color: '#0F172A', 
-    textTransform: 'uppercase', 
-    letterSpacing: 0.8,
-  },
-  directPayScroll: { 
-    paddingHorizontal: 20, 
-    gap: 10,
-  },
-
-  // Compact card - no wasted space
-  directPayCard: { 
-    width: 150,
-    height: 56,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.12)',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    position: 'relative',
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  
-  directPayAccentLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2.5,
-    backgroundColor: '#059669',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-  
-  directPayContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-
-  directPayIconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#ECFDF5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    flexShrink: 0,
-  },
-  directPayPulse: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-  },
-
-  directPayTextContainer: {
-    flex: 1,
-    minWidth: 0, // Prevents overflow
-  },
-  directPayName: { 
-    fontSize: 13, 
-    fontWeight: '700', 
-    color: '#0F172A',
-    marginBottom: 1,
-  },
-  directPayAddress: { 
-    fontSize: 10, 
-    color: '#64748B', 
-    fontWeight: '500',
-  },
-
   // --- SEARCH & CATEGORIES ---
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, paddingHorizontal: 16, height: 48, marginHorizontal: 20, marginBottom: 14, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1, borderWidth: 1, borderColor: '#F1F5F9' },
   searchIcon: { marginRight: 8 },
@@ -707,7 +512,4 @@ const styles = StyleSheet.create({
     height: 220, 
     borderRadius: 16, 
   },
-  
-  qrMemberId: { fontSize: 32, fontWeight: '900', color: '#0F172A', letterSpacing: 2, marginBottom: 4 },
-  qrHelperText: { fontSize: 14, color: '#64748B', fontWeight: '600' },
 });

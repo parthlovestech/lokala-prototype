@@ -8,7 +8,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ALLOWED_DOMAINS = ['colby.edu', 'thomas.edu', 'kvcc.me.edu', 'midmainechamber.com'];
 
 // Add any specific individual emails you want to whitelist here:
-const ALLOWED_EMAILS = ['jplourde@cbplourde.com'];
+const ALLOWED_EMAILS = ['jplourde@cbplourde.com', 'jeff@centralmaine.org'];
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
